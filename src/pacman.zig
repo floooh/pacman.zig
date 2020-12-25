@@ -29,6 +29,9 @@ const State = struct {
 };
 var state: State = .{};
 
+// a 2D integer vector type
+const ivec2 = @Vector(2,i16);
+
 //--- rendering subsystem ------------------------------------------------------
 const Gfx = struct {
     // vertex-structure for rendering background tiles and sprites
@@ -38,11 +41,28 @@ const Gfx = struct {
         attr: u32,          // color code and opacity
     };
 
+    // a 'hardware sprite' struct
+    const Sprite = struct {
+        enabled: bool = false,
+        tile: u8 = 0,
+        color: u8 = 0,
+        flipx: bool = false,
+        flipy: bool = false,
+        pos: ivec2 = ivec2{0,0},
+    };
+
     // current fade opacity
     fade: u8 = 0,
 
-    pass_action: sg.PassAction = .{},
+    // 'hardware sprites' (meh, array default initialization sure looks awkward...)
+    sprites: [NumSprites]Sprite = [_]Sprite{.{}} ** NumSprites,
 
+    // tile- and color-buffer
+    tile_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
+    color_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
+
+    // sokol-gfx objects
+    pass_action: sg.PassAction = .{},
     offscreen: struct {
         vbuf: sg.Buffer = .{},
         tile_img: sg.Image = .{},
@@ -52,7 +72,6 @@ const Gfx = struct {
         pass: sg.Pass = .{},
         bind: sg.Bindings = .{},
     } = .{},
-    
     display: struct {
         quad_vbuf: sg.Buffer = .{},
         pip: sg.Pipeline = .{},
@@ -60,7 +79,7 @@ const Gfx = struct {
     } = .{},
 
     // upload-buffer for dynamically generated tile- and sprite-vertices
-    num_vertices: i32 = 0,
+    num_vertices: u32 = 0,
     vertices: [MaxVertices]Vertex = undefined,
 
     // scratch-space for decoding tile ROM dumps into a GPU texture
@@ -88,9 +107,72 @@ fn gfxShutdown() void {
     sg.shutdown();
 }
 
+fn gfxClear(tile_code: u8, color_code: u8) void {
+    var y: u32 = 0;
+    while (y < DisplayTilesY): (y += 1) {
+        var x: u32 = 0;
+        while (x < DisplayTilesX): (x += 1) {
+            state.gfx.tile_ram[y][x] = tile_code;
+            state.gfx.color_ram[y][x] = color_code;
+        }
+    }
+}
+
+fn gfxTile(pos: ivec2, tile_code: u8) void {
+    state.gfx.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = tile_code;
+}
+
+fn gfxColor(pos: ivec2, color_code: u8) void {
+    state.gfx.color_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = color_code;
+}
+
+fn gfxColorTile(pos: ivec2, color_code: u8, tile_code: u8) void {
+    gfxTile(pos, tile_code);
+    gfxColor(pos, color_code);
+}
+
+fn gfxToNamcoChar(c: u8) u8 {
+    return switch (c) {
+        ' ' => 64,
+        '/' => 58,
+        '-' => 59,
+        '"' => 38,
+        '!' => 'Z'+1,
+        else => c
+    };
+}
+
+fn gfxChar(pos: ivec2, chr: u8) void {
+    gfxTile(pos, gfxToNamcoChar(chr));
+}
+
+fn gfxColorChar(pos: ivec2, color_code: u8, chr: u8) void {
+    gfxChar(pos, chr);
+    gfxColor(pos, color_code);
+}
+
+fn gfxColorText(pos: ivec2, color_code: u8, text: []const u8) void {
+    var p = pos;
+    for (text) |chr| {
+        if (p[0] < DisplayTilesX) {
+            gfxColorChar(p, color_code, chr);
+            p[0] += 1;
+        }
+        else {
+            break;
+        }
+    }
+}
+
+fn gfxClearSprites() void {
+    for (state.gfx.sprites) |*spr| {
+        spr.* = .{};
+    }
+}
+
 fn gfxDrawFrame() void {
     // handle fade-in/out
-    gfxFade();
+    gfxUpdateFade();
 
     // render tile- and sprite-vertices and upload into vertex buffer
     state.gfx.num_vertices = 0;
@@ -106,7 +188,8 @@ fn gfxDrawFrame() void {
     sg.beginPass(state.gfx.offscreen.pass, state.gfx.pass_action);
     sg.applyPipeline(state.gfx.offscreen.pip);
     sg.applyBindings(state.gfx.offscreen.bind);
-    sg.draw(0, state.gfx.num_vertices, 1);
+    // FIXME: sokol-gfx should use unsigned params here
+    sg.draw(0, @intCast(i32, state.gfx.num_vertices), 1);
     sg.endPass();
 
     // upscale-render the offscreen render target into the display framebuffer
@@ -120,16 +203,91 @@ fn gfxDrawFrame() void {
     sg.commit();
 }
 
-fn gfxFade() void {
+fn gfxAddVertex(x: f32, y: f32, u: f32, v: f32, color_code: u32, opacity: u32) void {
+    var vtx: *Gfx.Vertex = &state.gfx.vertices[state.gfx.num_vertices];
+    state.gfx.num_vertices += 1;
+    vtx.x = x;
+    vtx.y = y;
+    vtx.u = u;
+    vtx.v = v;
+    vtx.attr = (opacity<<8)|color_code;
+}
+
+fn gfxAddTileVertices(x: u32, y: u32, tile_code: u32, color_code: u32) void {
+    const dx = 1.0 / @intToFloat(f32, DisplayTilesX);
+    const dy = 1.0 / @intToFloat(f32, DisplayTilesY);
+    const dtx = @intToFloat(f32, TileWidth) / TileTextureWidth;
+    const dty = @intToFloat(f32, TileHeight) / TileTextureHeight;
+
+    const x0 = @intToFloat(f32, x) * dx;
+    const x1 = x0 + dx;
+    const y0 = @intToFloat(f32, y) * dy;
+    const y1 = y0 + dy;
+    const tx0 = @intToFloat(f32, tile_code) * dtx;
+    const tx1 = tx0 + dtx;
+    const ty0: f32 = 0.0;
+    const ty1 = dty;
+
+    //  x0,y0
+    //  +-----+
+    //  | *   |
+    //  |   * |
+    //  +-----+
+    //          x1,y1
+    gfxAddVertex(x0, y0, tx0, ty0, color_code, 0xFF);
+    gfxAddVertex(x1, y0, tx1, ty0, color_code, 0xFF);
+    gfxAddVertex(x1, y1, tx1, ty1, color_code, 0xFF);
+    gfxAddVertex(x0, y0, tx0, ty0, color_code, 0xFF);
+    gfxAddVertex(x1, y1, tx1, ty1, color_code, 0xFF);
+    gfxAddVertex(x0, y1, tx0, ty1, color_code, 0xFF);
+}
+
+fn gfxUpdateFade() void {
     // FIXME
 }
 
 fn gfxAddPlayfieldVertices() void {
-    // FIXME
+    var y: u32 = 0;
+    while (y < DisplayTilesY): (y += 1) {
+        var x: u32 = 0;
+        while (x < DisplayTilesX): (x += 1) {
+            const tile_code = state.gfx.tile_ram[y][x];
+            const color_code = state.gfx.color_ram[y][x] & 0x1F;
+            gfxAddTileVertices(x, y, tile_code, color_code);
+        }
+    }
 }
 
 fn gfxAddSpriteVertices() void {
-    // FIXME
+    const dx = 1.0 / @intToFloat(f32, DisplayPixelsX);
+    const dy = 1.0 / @intToFloat(f32, DisplayPixelsY);
+    const dtx = @intToFloat(f32, SpriteWidth) / TileTextureWidth;
+    const dty = @intToFloat(f32, SpriteHeight) / TileTextureHeight;
+    for (state.gfx.sprites) |*spr| {
+        if (spr.enabled) {
+            const xx0 = @intToFloat(f32, spr.pos[0]) * dx;
+            const xx1 = xx0 + dx*SpriteWidth;
+            const yy0 = @intToFloat(f32, spr.pos[1]) * dy;
+            const yy1 = yy0 + dy*SpriteHeight;
+
+            const x0 = if (spr.flipx) xx1 else xx0;
+            const x1 = if (spr.flipx) xx0 else xx1;
+            const y0 = if (spr.flipy) yy1 else yy0;
+            const y1 = if (spr.flipy) yy0 else yy1;
+
+            const tx0 = @intToFloat(f32, spr.tile) * dtx;
+            const tx1 = tx0 + dtx;
+            const ty0 = @intToFloat(f32, TileHeight) / TileTextureHeight;
+            const ty1 = ty0 + dty;
+
+            gfxAddVertex(x0, y0, tx0, ty0, spr.color, 0xFF);
+            gfxAddVertex(x1, y0, tx1, ty0, spr.color, 0xFF);
+            gfxAddVertex(x1, y1, tx1, ty1, spr.color, 0xFF);
+            gfxAddVertex(x0, y0, tx0, ty0, spr.color, 0xFF);
+            gfxAddVertex(x1, y1, tx1, ty1, spr.color, 0xFF);
+            gfxAddVertex(x0, y1, tx0, ty1, spr.color, 0xFF);
+        }
+    }
 }
 
 fn gfxAddDebugMarkerVertices() void {
@@ -401,6 +559,24 @@ export fn init() void {
 }
 
 export fn frame() void {
+    gfxClear(0x40, 0x10);
+    gfxClearSprites();
+    gfxColorText(.{8, 12}, 9, "HELLO WORLD!");
+    var i: u8 = 0;
+    while (i < 4): (i += 1) {
+        state.gfx.sprites[i] = .{
+            .enabled = true,
+            .pos = .{ 60 + i*20, 120 },
+            .tile = 32,
+            .color = 1 + i*2
+        };
+    }
+    state.gfx.sprites[4] = .{
+        .enabled = true,
+        .pos = .{ 150, 120 },
+        .tile = 44,
+        .color = 9,
+    };
     gfxDrawFrame();
 }
 
