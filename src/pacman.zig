@@ -166,6 +166,54 @@ fn introTick() void {
         gfxText(.{3,35}, "CREDIT 0");
     }
 
+    // draw the animated 'ghost... name... nickname' lines
+    var delay: u32 = 0;
+    const names = [_][]const u8 { "-SHADOW", "-SPEEDY", "-BASHFUL", "-POKEY" };
+    const nicknames = [_][]const u8 { "BLINKY", "PINKY", "INKY", "CLYDE" };
+    for (names) |name, i| {
+        const color: u8 = 2 * @intCast(u8,i) + 1;
+        const y: i16 = 3 * @intCast(i16,i) + 6;
+        
+        // 2*3 tiles ghost image
+        delay += 30;
+        if (state.intro.started.afterOnce(delay)) {
+            gfxColorTile(.{4,y+0}, color, TileCodeGhost+0); gfxColorTile(.{5,y+0}, color, TileCodeGhost+1);
+            gfxColorTile(.{4,y+1}, color, TileCodeGhost+2); gfxColorTile(.{5,y+1}, color, TileCodeGhost+3);
+            gfxColorTile(.{4,y+2}, color, TileCodeGhost+4); gfxColorTile(.{5,y+2}, color, TileCodeGhost+5);
+        }
+        // after 1 second, the name of the ghost
+        delay += 60;
+        if (state.intro.started.afterOnce(delay)) {
+            gfxColorText(.{7,y+1}, color, name);
+        }
+        // after 0.5 seconds, the nickname of the ghost
+        delay += 30;
+        if (state.intro.started.afterOnce(delay)) {
+            gfxColorText(.{17,y+1}, color, nicknames[i]);
+        }
+    }
+
+    // . 10 PTS
+    // o 50 PTS
+    delay += 60;
+    if (state.intro.started.afterOnce(delay)) {
+        gfxColorTile(.{10,24}, ColorCodeDot, TileCodeDot);
+        gfxText(.{12,24}, "10 \x5D\x5E\x5F");
+        gfxColorTile(.{10,26}, ColorCodeDot, TileCodePill);
+        gfxText(.{12,26}, "50 \x5D\x5E\x5F");
+    }
+
+    // blinking "press any key" text
+    delay += 60;
+    if (state.intro.started.after(delay)) {
+        if (0 != (state.intro.started.since() & 0x20)) {
+            gfxColorText(.{3,31}, 3, "                       ");
+        }
+        else {
+            gfxColorText(.{3,31}, 3, "PRESS ANY KEY TO START!");
+        }
+    }
+
     // if a key is pressed, advance to game state
     if (state.input.anykey) {
         state.input.disable();
@@ -261,7 +309,7 @@ const Trigger = struct {
         return since(t) == ticks;
     }
     // check if a time trigger was triggered more than N ticks ago
-    fn after(t: Trigger, ticks, u32) bool {
+    fn after(t: Trigger, ticks: u32) bool {
         const s = since(t);
         if (s != DisabledTicks) {
             return s >= ticks;
