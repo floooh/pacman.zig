@@ -105,8 +105,12 @@ const State = struct {
 };
 var state: State = .{};
 
-// a 2D integer vector type
+//--- helper structs and functions ---------------------------------------------
 const ivec2 = @Vector(2,i16);
+
+fn validTilePos(pos: ivec2) bool {
+    return (pos[0] >= 0) and (pos[0] < DisplayTilesX) and (pos[1] >= 0) and (pos[1] < DisplayTilesY);
+}
 
 //--- gameplay system ----------------------------------------------------------
 const GameState = enum {
@@ -154,9 +158,9 @@ fn introTick() void {
         state.input.enable();
         gfxClear(TileCodeSpace, ColorCodeDefault);
         gfxText(.{3,0}, "1UP   HIGH SCORE   2UP");
-        //gfxColorScore(.{6,1}, ColorDefault, 0);
+        gfxColorScore(.{6,1}, ColorCodeDefault, 0);
         if (state.game.hiscore > 0) {
-            //gfxColorScore(.{16,1}, ColorCodeDefault, state.game.hiscore);
+            gfxColorScore(.{16,1}, ColorCodeDefault, state.game.hiscore);
         }
         gfxText(.{7,5}, "CHARACTER / NICKNAME");
         gfxText(.{3,35}, "CREDIT 0");
@@ -421,6 +425,30 @@ fn gfxText(pos: ivec2, text: []const u8) void {
         }
         else {
             break;
+        }
+    }
+}
+
+// print colored score number into tile+color buffers from right to left(!),
+// scores are /10, the last printed number is always 0, 
+// a zero-score will print as '00' (this is the same as on
+// the Pacman arcade machine)
+fn gfxColorScore(pos: ivec2, color_code: u8, score: u32) void {
+    var p = pos;
+    var s = score;
+    gfxColorChar(p, color_code, '0');
+    p[0] -= 1;
+    var digit: u32 = 0;
+    while (digit < 8): (digit += 1) {
+        // FIXME: should this narrowing cast not be necessary?
+        const chr: u8 = @intCast(u8, s % 10) + '0';
+        if (validTilePos(p)) {
+            gfxColorChar(p, color_code, chr);
+            p[0] -= 1;
+            s /= 10;
+            if (0 == score) {
+                break;
+            }
         }
     }
 }
