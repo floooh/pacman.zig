@@ -11,7 +11,7 @@ const DbgSkipIntro = false;         // set to true to skip intro gamestate
 const DbgSkipPrelude = false;       // set to true to skip prelude at start of gameloop
 const DbgStartRound = 0;            // set to any starting round <= 255
 const DbgShowMarkers = false;       // set to true to display debug markers
-const DbgEscape = false;            // set to true to end game round with Escape
+const DbgEscape = true;            // set to true to end game round with Escape
 const DbgDoubleSpeed = false;       // set to true to speed up game
 const DbgGodMode = false;           // set to true to make Pacman invulnerable
 
@@ -20,19 +20,7 @@ const TickDurationNS = if (DbgDoubleSpeed) 8_333_33 else 16_666_667;
 const MaxFrameTimeNS = 33_333_333.0;    // max duration of a frame in nanoseconds
 const TickToleranceNS = 1_000_000;      // max time tolerance of a game tick in nanoseconds
 const FadeTicks = 30;                   // fade in/out duration in game ticks
-const NumSprites = 8;
 const NumDebugMarkers = 16;
-const TileWidth = 8;            // width/height of a background tile in pixels
-const TileHeight = 8;
-const SpriteWidth = 16;         // width/height of a sprite in pixels
-const SpriteHeight = 16;
-const DisplayTilesX = 28;       // display width/height in number of tiles
-const DisplayTilesY = 36;
-const DisplayPixelsX = DisplayTilesX * TileWidth;
-const DisplayPixelsY = DisplayTilesY * TileHeight;
-const TileTextureWidth = 256 * TileWidth;
-const TileTextureHeight = TileHeight + SpriteHeight;
-const MaxVertices = ((DisplayTilesX*DisplayTilesY) + NumSprites + NumDebugMarkers) * 6;
 
 // common tile codes
 const TileCodeSpace      = 0x40;
@@ -124,24 +112,350 @@ const Dir = enum {
     Left,
     Up,
 
+    // return reveres direction
     fn reverse(self: Dir) Dir {
         return switch (self) {
             .Right => .Left,
-            .Down => .Up,
-            .Left => .Right,
-            .Up => .Down,
+            .Down  => .Up,
+            .Left  => .Right,
+            .Up    => .Down,
+        };
+    }
+
+    // return a vector for a given direction
+    fn vec(dir: Dir) ivec2 {
+        return switch (dir) {
+            .Right => .{ 1, 0 },
+            .Down  => .{ 0, 1 },
+            .Left  => .{ -1, 0 },
+            .Up    => .{ 0, -1 }
         };
     }
 };
 
-//--- Game gamestate -----------------------------------------------------------
-const Game = struct {
-    hiscore: u32 = 0,
-    started: Trigger = .{},
+// bonus fruit types
+const Fruit = enum {
+    None,
+    Cherries,
+    Strawberry,
+    Peach,
+    Apple,
+    Grapes,
+    Galaxian,
+    Bell,
+    Key
 };
 
+//--- Game gamestate -----------------------------------------------------------
+
+// gameplay constants
+const NumLives = 3;
+const NumDots = 244;
+const NumPills = 4;
+const AntePortasX = 14*TileWidth;   // x/y position of ghost hour entry
+const AntePortasY = 14*TileHeight + TileHeight/2;
+const FruitActiveTicks = 10 * 60;   // number of ticks the bonus fruit is shown
+const GhostEatenFreezeTicks = 60;   // number of ticks the game freezes after Pacman eats a ghost
+const PacmanEatenTicks = 60;        // number of ticks the game freezes after Pacman gets eaten
+const PacmanDeathTicks = 150;       // number of ticks to show the Pacman death sequence before starting a new round
+const GameOverTicks = 3*60;         // number of ticks to show the Game Over message
+const RoundWonTicks = 4*60;         // number of ticks to wait after a round was won
+
+// flags for Game.freeze
+const FreezePrelude:    u8 = (1<<0);
+const FreezeReady:      u8 = (1<<1);
+const FreezeEatGhost:   u8 = (1<<2);
+const FreezeDead:       u8 = (1<<3);
+const FreezeWon:        u8 = (1<<4);
+
+const Game = struct {
+
+    xorshift:           u32 = 0x12345678,   // xorshift random-number-generator state
+    score:              u32 = 0,
+    hiscore:            u32 = 0,
+    num_lives:          u8 = 0,
+    round:              u8 = 0,
+    freeze:             u8 = 0,             // combination of Freeze* flags
+    num_dots_eaten:     u8 = 0,
+    num_ghosts_eaten:   u8 = 0,
+    active_fruit:       Fruit = .None,
+    
+    global_dot_counter_active: bool = false,
+    global_dot_counter: u16 = 0,
+
+    started:            Trigger = .{},
+    prelude_started:    Trigger = .{},
+    ready_started:      Trigger = .{},
+    round_started:      Trigger = .{},
+    round_won:          Trigger = .{},
+    game_over:          Trigger = .{},
+    dot_eaten:          Trigger = .{},
+    pill_eaten:         Trigger = .{},
+    ghost_eaten:        Trigger = .{},
+    pacman_eaten:       Trigger = .{},
+    fruit_eaten:        Trigger = .{},
+    force_leave_house:  Trigger = .{},
+    fruit_active:       Trigger = .{},
+};
+
+// level specifications
+const LevelSpec = struct {
+    bonus_fruit: Fruit,
+    bonus_score: u32,
+    fright_ticks: u32,
+};
+const MaxLevelSpec = 21;
+const LevelSpecTable = [MaxLevelSpec]LevelSpec {
+    .{ .bonus_fruit=.Cherries,   .bonus_score = 10, .fright_ticks = 6*60 },
+    .{ .bonus_fruit=.Strawberry, .bonus_score=30,  .fright_ticks=5*60, },
+    .{ .bonus_fruit=.Peach,      .bonus_score=50,  .fright_ticks=4*60, },
+    .{ .bonus_fruit=.Peach,      .bonus_score=50,  .fright_ticks=3*60, },
+    .{ .bonus_fruit=.Apple,      .bonus_score=70,  .fright_ticks=2*60, },
+    .{ .bonus_fruit=.Apple,      .bonus_score=70,  .fright_ticks=5*60, },
+    .{ .bonus_fruit=.Grapes,     .bonus_score=100, .fright_ticks=2*60, },
+    .{ .bonus_fruit=.Grapes,     .bonus_score=100, .fright_ticks=2*60, },
+    .{ .bonus_fruit=.Galaxian,   .bonus_score=200, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Galaxian,   .bonus_score=200, .fright_ticks=5*60, },
+    .{ .bonus_fruit=.Bell,       .bonus_score=300, .fright_ticks=2*60, },
+    .{ .bonus_fruit=.Bell,       .bonus_score=300, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=3*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
+};
+
+// get level spec for the current game round
+fn gameLevelSpec(round: u32) LevelSpec {
+    var i = round;
+    if (i >= MaxLevelSpec) {
+        i = MaxLevelSpec - 1;
+    }
+    return LevelSpecTable[i];
+}
+
+// the central game tick function, called at 60Hz
 fn gameTick() void {
-    // FIXME
+
+    // initialize game-state once
+    if (state.game.started.now()) {
+        // debug: skip predule
+        const prelude_ticks_per_sec = if (DbgSkipPrelude) 1 else 60;
+        state.gfx.fadein.start();
+        state.game.prelude_started.start();
+        state.game.ready_started.startAfter(2*prelude_ticks_per_sec);
+        // FIXME: start prelude sound
+        gameInit();
+    }
+
+    // initialize new round (after eating all dots or losing a life)
+    if (state.game.ready_started.now()) {
+        gameRoundInit();
+        // after 2 seconds, start the interactive game loop
+        state.game.round_started.startAfter(2*60 + 10);
+    }
+    if (state.game.round_started.now()) {
+        state.game.freeze &= ~FreezeReady;
+        // clear the READY! message
+        gfxColorText(.{11,20}, ColorCodeDot, "      ");
+        // FIXME: start weeooh sound
+    }
+
+    // activate/deactivate bonus fruit
+    if (state.game.fruit_active.now()) {
+        state.game.active_fruit = gameLevelSpec(state.game.round).bonus_fruit;
+    }
+    else if (state.game.fruit_active.afterOnce(FruitActiveTicks)) {
+        state.game.active_fruit = .None;
+    }
+
+    // stop frightened sound and start weeooh sound
+    if (state.game.pill_eaten.afterOnce(gameLevelSpec(state.game.round).fright_ticks)) {
+        // FIXME: start weeooh sound
+    }
+
+    // if game is frozen because Pacman ate a ghost, unfreeze after a while
+    if (0 != (state.game.freeze & FreezeEatGhost)) {
+        if (state.game.ghost_eaten.afterOnce(GhostEatenFreezeTicks)) {
+            state.game.freeze &= ~FreezeEatGhost;
+        }
+    }
+
+    // play pacman-death sound
+    if (state.game.pacman_eaten.afterOnce(PacmanEatenTicks)) {
+        // FIXME: play sound
+    }
+
+    // update Pacman and ghost state
+    if (0 != state.game.freeze) {
+        // FIXME!
+    }
+    //gameUpdateTiles();
+    //gameUpdateSprites();
+
+    // update hiscore if broken
+    if (state.game.score > state.game.hiscore) {
+        state.game.hiscore = state.game.score;
+    }
+
+    // check for end-round condition
+    if (state.game.round_won.now()) {
+        state.game.freeze |= FreezeWon;
+        state.game.ready_started.startAfter(RoundWonTicks);
+    }
+    if (state.game.game_over.now()) {
+        gfxColorText(.{9,20}, 1, "GAME  OVER");
+        state.input.disable();
+        state.gfx.fadeout.startAfter(GameOverTicks);
+        state.intro.started.startAfter(GameOverTicks + FadeTicks);
+    }
+
+    if (DbgEscape) {
+        if (state.input.esc) {
+            state.input.disable();
+            state.gfx.fadeout.start();
+            state.intro.started.startAfter(FadeTicks);
+        }
+    }
+
+    // FIXME: render debug markers
+}
+
+// common time trigger initialization at start of a game round
+fn gameInitTriggers() void {
+    state.game.round_won.disable();
+    state.game.game_over.disable();
+    state.game.dot_eaten.disable();
+    state.game.pill_eaten.disable();
+    state.game.ghost_eaten.disable();
+    state.game.pacman_eaten.disable();
+    state.game.fruit_eaten.disable();
+    state.game.force_leave_house.disable();
+    state.game.fruit_active.disable();
+}
+
+// intialize a new game
+fn gameInit() void {
+    state.input.enable();
+    gameInitTriggers();
+    state.game.round = DbgStartRound;
+    state.game.freeze = FreezePrelude;
+    state.game.num_lives = NumLives;
+    state.game.global_dot_counter_active = false;
+    state.game.global_dot_counter = 0;
+    state.game.num_dots_eaten = 0;
+    state.game.score = 0;
+
+    // draw the playfield and PLAYER ONE READY! message
+    gfxClear(TileCodeSpace, ColorCodeDot);
+    gfxColorText(.{9,0}, ColorCodeDefault, "HIGH SCORE");
+    gameInitPlayfield();
+    gfxColorText(.{9,14}, 5, "PLAYER ONE");
+    gfxColorText(.{11,20}, 9, "READY!");
+}
+
+// initialize the playfield background tiles
+fn gameInitPlayfield() void {
+    gfxClearPlayfieldToColor(ColorCodeDot);
+    // decode the playfield data from an ASCII map
+    const tiles =
+       \\0UUUUUUUUUUUU45UUUUUUUUUUUU1
+       \\L............rl............R
+       \\L.ebbf.ebbbf.rl.ebbbf.ebbf.R
+       \\LPr  l.r   l.rl.r   l.r  lPR
+       \\L.guuh.guuuh.gh.guuuh.guuh.R
+       \\L..........................R
+       \\L.ebbf.ef.ebbbbbbf.ef.ebbf.R
+       \\L.guuh.rl.guuyxuuh.rl.guuh.R
+       \\L......rl....rl....rl......R
+       \\2BBBBf.rzbbf rl ebbwl.eBBBB3
+       \\     L.rxuuh gh guuyl.R     
+       \\     L.rl          rl.R     
+       \\     L.rl mjs--tjn rl.R     
+       \\UUUUUh.gh i      q gh.gUUUUU
+       \\      .   i      q   .      
+       \\BBBBBf.ef i      q ef.eBBBBB
+       \\     L.rl okkkkkkp rl.R     
+       \\     L.rl          rl.R     
+       \\     L.rl ebbbbbbf rl.R     
+       \\0UUUUh.gh guuyxuuh gh.gUUUU1
+       \\L............rl............R
+       \\L.ebbf.ebbbf.rl.ebbbf.ebbf.R
+       \\L.guyl.guuuh.gh.guuuh.rxuh.R
+       \\LP..rl.......  .......rl..PR
+       \\6bf.rl.ef.ebbbbbbf.ef.rl.eb8
+       \\7uh.gh.rl.guuyxuuh.rl.gh.gu9
+       \\L......rl....rl....rl......R
+       \\L.ebbbbwzbbf.rl.ebbwzbbbbf.R
+       \\L.guuuuuuuuh.gh.guuuuuuuuh.R
+       \\L..........................R
+       \\2BBBBBBBBBBBBBBBBBBBBBBBBBB3
+       ;
+    // map ASCII to tile codes
+    var t = [_]u8{TileCodeDot} ** 128;
+    t[' ']=0x40; t['0']=0xD1; t['1']=0xD0; t['2']=0xD5; t['3']=0xD4; t['4']=0xFB;
+    t['5']=0xFA; t['6']=0xD7; t['7']=0xD9; t['8']=0xD6; t['9']=0xD8; t['U']=0xDB;
+    t['L']=0xD3; t['R']=0xD2; t['B']=0xDC; t['b']=0xDF; t['e']=0xE7; t['f']=0xE6;
+    t['g']=0xEB; t['h']=0xEA; t['l']=0xE8; t['r']=0xE9; t['u']=0xE5; t['w']=0xF5;
+    t['x']=0xF2; t['y']=0xF3; t['z']=0xF4; t['m']=0xED; t['n']=0xEC; t['o']=0xEF;
+    t['p']=0xEE; t['j']=0xDD; t['i']=0xD2; t['k']=0xDB; t['q']=0xD3; t['s']=0xF1;
+    t['t']=0xF0; t['-']=TileCodeDoor; t['P']=TileCodePill;
+    var y: i16 = 3;
+    var i: usize = 0;
+    while (y < DisplayTilesY-2): (y += 1) {
+        var x: i16 = 0;
+        while (x < DisplayTilesX): ({ x += 1; i += 1; }) {
+            gfxTile(.{x,y}, t[tiles[i] & 127]);
+        }
+        // skip newline
+        i += 1;
+    }
+}
+
+// initialize a new game round
+fn gameRoundInit() void {
+    gfxClearSprites();
+
+    // clear the PLAYER ONE text
+    gfxColorText(.{9,14}, ColorCodeDot, "          ");
+
+    // if a new round was started because Pacman had won (eaten all dots),
+    // redraw the playfield and reset the global dot counter
+    if (state.game.num_dots_eaten == NumDots) {
+        state.game.round += 1;
+        state.game.num_dots_eaten = 0;
+        state.game.global_dot_counter_active = false;
+        gameInitPlayfield();
+    }
+    else {
+        // if the previous round was lost, use the global dot counter 
+        // to detect when ghosts should leave the ghost house instead
+        // of the per-ghost dot counter
+        if (state.game.num_lives != NumLives) {
+            state.game.global_dot_counter_active = true;
+            state.game.global_dot_counter = 0;
+        }
+        state.game.num_lives -= 1;
+    }
+    assert(state.game.num_lives > 0);
+
+    state.game.active_fruit = .None;
+    state.game.freeze = FreezeReady;
+    state.game.xorshift = 0x12345678;
+    state.game.num_ghosts_eaten = 0;
+    gameInitTriggers();
+
+    gfxColorText(.{11,20}, 9, "READY!");
+
+    // the force-house trigger forces ghosts out of the house if Pacman
+    // hasn't been eating dots for a while
+    state.game.force_leave_house.start();
+
+    // FIXME: init Pacman and Ghost state
 }
 
 //--- Intro gamestate ----------------------------------------------------------
@@ -278,7 +592,7 @@ const Trigger = struct {
     }
     // disable a trigger
     fn disable(t: *Trigger) void {
-        t.ticks = DisabledTicks;
+        t.tick = DisabledTicks;
     }
     // check if trigger is triggered in current game tick
     fn now(t: Trigger) bool {
@@ -331,6 +645,19 @@ const Trigger = struct {
 };
 
 //--- rendering system ---------------------------------------------------------
+const TileWidth = 8;            // width/height of a background tile in pixels
+const TileHeight = 8;
+const SpriteWidth = 16;         // width/height of a sprite in pixels
+const SpriteHeight = 16;
+const DisplayTilesX = 28;       // display width/height in number of tiles
+const DisplayTilesY = 36;
+const DisplayPixelsX = DisplayTilesX * TileWidth;
+const DisplayPixelsY = DisplayTilesY * TileHeight;
+const TileTextureWidth = 256 * TileWidth;
+const TileTextureHeight = TileHeight + SpriteHeight;
+const NumSprites = 8;
+const MaxVertices = ((DisplayTilesX*DisplayTilesY) + NumSprites + NumDebugMarkers) * 6;
+
 const Gfx = struct {
     // vertex-structure for rendering background tiles and sprites
     const Vertex = packed struct {
@@ -413,6 +740,16 @@ fn gfxClear(tile_code: u8, color_code: u8) void {
         var x: u32 = 0;
         while (x < DisplayTilesX): (x += 1) {
             state.gfx.tile_ram[y][x] = tile_code;
+            state.gfx.color_ram[y][x] = color_code;
+        }
+    }
+}
+
+fn gfxClearPlayfieldToColor(color_code: u8) void {
+    var y: usize = 3;
+    while (y < (DisplayTilesY-2)): (y += 1) {
+        var x: usize = 0;
+        while (x < DisplayTilesX): (x += 1) {
             state.gfx.color_ram[y][x] = color_code;
         }
     }
