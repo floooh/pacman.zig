@@ -1,8 +1,25 @@
 const sg = @import("sokol").gfx;
 const sapp = @import("sokol").app;
+const stm = @import("sokol").time;
 const sgapp = @import("sokol").app_gfx_glue;
+const assert = @import("std").debug.assert;
+
+const warn = @import("std").debug.warn;
+
+// debugging options
+const DbgSkipIntro = false;         // set to true to skip intro gamestate
+const DbgSkipPrelude = false;       // set to true to skip prelude at start of gameloop
+const DbgStartRound = 0;            // set to any starting round <= 255
+const DbgShowMarkers = false;       // set to true to display debug markers
+const DbgEscape = false;            // set to true to end game round with Escape
+const DbgDoubleSpeed = false;       // set to true to speed up game
+const DbgGodMode = false;           // set to true to make Pacman invulnerable
 
 // various constants
+const TickDurationNS = if (DbgDoubleSpeed) 8_333_33 else 16_666_667;
+const MaxFrameTimeNS = 33_333_333.0;    // max duration of a frame in nanoseconds
+const TickToleranceNS = 1_000_000;      // max time tolerance of a game tick in nanoseconds
+const FadeTicks = 30;                   // fade in/out duration in game ticks
 const NumSprites = 8;
 const NumDebugMarkers = 16;
 const TileWidth = 8;            // width/height of a background tile in pixels
@@ -17,8 +34,73 @@ const TileTextureWidth = 256 * TileWidth;
 const TileTextureHeight = TileHeight + SpriteHeight;
 const MaxVertices = ((DisplayTilesX*DisplayTilesY) + NumSprites + NumDebugMarkers) * 6;
 
+// common tile codes
+const TileCodeSpace      = 0x40;
+const TileCodeDot        = 0x10;
+const TileCodePill       = 0x14;
+const TileCodeGhost      = 0xB0;
+const TileCodeLife       = 0x20; // 0x20..0x23
+const TileCodeCherries   = 0x90; // 0x90..0x93
+const TileCodeStrawberry = 0x94; // 0x94..0x97
+const TileCodePeach      = 0x98; // 0x98..0x9B
+const TileCodeBell       = 0x9C; // 0x9C..0x9F
+const TileCodeApple      = 0xA0; // 0xA0..0xA3
+const TileCodeGrapes     = 0xA4; // 0xA4..0xA7
+const TileCodeGalaxian   = 0xA8; // 0xA8..0xAB
+const TileCodeKey        = 0xAC; // 0xAC..0xAF
+const TileCodeDoor       = 0xCF; // the ghost-house door
+
+// common sprite tile codes
+const SpriteCodeInvisible    = 30;
+const SpriteCodeScore200     = 40;
+const SpriteCodeScore400     = 41;
+const SpriteCodeScore800     = 42;
+const SpriteCodeScore1600    = 43;
+const SpriteCodeCherries     = 0;
+const SpriteCodeStrawberry   = 1;
+const SpriteCodePeach        = 2;
+const SpriteCodeBell         = 3;
+const SpriteCodeApple        = 4;
+const SpriteCodeGrapes       = 5;
+const SpriteCodeGalaxian     = 6;
+const SpriteCodeKey          = 7;
+const SpriteCodePacmanClosedMouth = 48;
+
+// common color codes
+const ColorCodeBlank         = 0x00;
+const ColorCodeDefault       = 0x0F;
+const ColorCodeDot           = 0x10;
+const ColorCodePacman        = 0x09;
+const ColorCodeBlinky        = 0x01;
+const ColorCodePinky         = 0x03;
+const ColorCodeInky          = 0x05;
+const ColorCodeClyde         = 0x07;
+const ColorCodeFrightened    = 0x11;
+const ColorCodeFrightenedBlinking = 0x12;
+const ColorCodeGhostScore    = 0x18;
+const ColorCodeEyes          = 0x19;
+const ColorCodeCherries      = 0x14;
+const ColorCodeStrawberry    = 0x0F;
+const ColorCodePeach         = 0x15;
+const ColorCodeBell          = 0x16;
+const ColorCodeApple         = 0x14;
+const ColorCodeGrapes        = 0x17;
+const ColorCodeGalaxian      = 0x09;
+const ColorCodeKey           = 0x16;
+const ColorCodeWhiteBorder   = 0x1F;
+const ColorCodeFruitScore    = 0x03;
+
 // all mutable state is in a single nested global
 const State = struct {
+    timing: struct {
+        tick: u32 = 0,
+        laptime_store: u64 = 0,
+        tick_accum: i32 = 0,
+    } = .{},
+    gamestate: GameState = undefined,
+    input: Input = .{},
+    intro: Intro = .{},
+    game: Game = .{},
     gfx: Gfx = .{},
 };
 var state: State = .{};
@@ -26,7 +108,177 @@ var state: State = .{};
 // a 2D integer vector type
 const ivec2 = @Vector(2,i16);
 
-//--- rendering subsystem ------------------------------------------------------
+//--- gameplay system ----------------------------------------------------------
+const GameState = enum {
+    Intro,
+    Game,
+};
+
+const Dir = enum {
+    Right,
+    Down,
+    Left,
+    Up,
+
+    fn reverse(self: Dir) Dir {
+        return switch (self) {
+            .Right => .Left,
+            .Down => .Up,
+            .Left => .Right,
+            .Up => .Down,
+        };
+    }
+};
+
+//--- Game gamestate -----------------------------------------------------------
+const Game = struct {
+    hiscore: u32 = 0,
+    started: Trigger = .{},
+};
+
+fn gameTick() void {
+    // FIXME
+}
+
+//--- Intro gamestate ----------------------------------------------------------
+const Intro = struct {
+    started: Trigger = .{},
+};
+
+fn introTick() void {
+    // on state enter, enable input and draw initial text
+    if (state.intro.started.now()) {
+        // sndClear();
+        gfxClearSprites();
+        state.gfx.fadein.start();
+        state.input.enable();
+        gfxClear(TileCodeSpace, ColorCodeDefault);
+        gfxText(.{3,0}, "1UP   HIGH SCORE   2UP");
+        //gfxColorScore(.{6,1}, ColorDefault, 0);
+        if (state.game.hiscore > 0) {
+            //gfxColorScore(.{16,1}, ColorCodeDefault, state.game.hiscore);
+        }
+        gfxText(.{7,5}, "CHARACTER / NICKNAME");
+        gfxText(.{3,35}, "CREDIT 0");
+    }
+
+    // if a key is pressed, advance to game state
+    if (state.input.anykey) {
+        state.input.disable();
+        state.gfx.fadeout.start();
+        state.game.started.startAfter(FadeTicks);
+    }
+}
+
+//--- input system -------------------------------------------------------------
+const Input = struct {
+    enabled: bool = false,
+    up: bool = false,
+    down: bool = false,
+    left: bool = false,
+    right: bool = false,
+    esc: bool = false,
+    anykey: bool = false,
+
+    fn enable(self: *Input) void {
+        self.enabled = true;
+    }
+    fn disable(self: *Input) void {
+        self.* = .{};
+    }
+    fn dir(self: *Input, default_dir: Dir) Dir {
+        if (self.enabled) {
+            if (self.up) { return .Up; }
+            else if (self.down) { return .Down; }
+            else if (self.left) { return .Left; }
+            else if (self.right) { return .Right; }
+        }
+        return default_dir;
+    }
+    fn onKey(self: *Input, keycode: sapp.Keycode, key_pressed: bool) void {
+        if (self.enabled) {
+            self.anykey = key_pressed;
+            switch (keycode) {
+                .W, .UP,    => self.up = key_pressed,
+                .S, .DOWN,  => self.down = key_pressed,
+                .A, .LEFT,  => self.left = key_pressed,
+                .D, .RIGHT, => self.right = key_pressed,
+                .ESCAPE     => self.esc = key_pressed,
+                else => {}
+            }
+        }
+    }
+};
+
+//--- time-trigger system ------------------------------------------------------
+const Trigger = struct {
+    const DisabledTicks = 0xFF_FF_FF_FF;
+
+    tick: u32 = DisabledTicks,
+
+    // set trigger to next tick
+    fn start(t: *Trigger) void {
+        t.tick = state.timing.tick + 1;
+    }
+    // set trigger to a future tick
+    fn startAfter(t: *Trigger, ticks: u32) void {
+        t.tick = state.timing.tick + ticks;
+    }
+    // disable a trigger
+    fn disable(t: *Trigger) void {
+        t.ticks = DisabledTicks;
+    }
+    // check if trigger is triggered in current game tick
+    fn now(t: Trigger) bool {
+        return t.tick == state.timing.tick;
+    }
+    // return number of ticks since a time trigger was triggered
+    fn since(t: Trigger) u32 {
+        if (state.timing.tick >= t.tick) {
+            return state.timing.tick - t.tick;
+        }
+        else {
+            return DisabledTicks;
+        }
+    }
+    // check if a time trigger is between begin and end tick
+    fn between(t: Trigger, begin: u32, end: u32) bool {
+        assert(begin < end);
+        if (t.tick != DisabledTicks) {
+            const ticks = since(t);
+            return (ticks >= begin) and (ticks < end);
+        }
+        else {
+            return false;
+        }
+    }
+    // check if a time trigger was triggered exactly N ticks ago
+    fn afterOnce(t: Trigger, ticks: u32) bool {
+        return since(t) == ticks;
+    }
+    // check if a time trigger was triggered more than N ticks ago
+    fn after(t: Trigger, ticks, u32) bool {
+        const s = since(t);
+        if (s != DisabledTicks) {
+            return s >= ticks;
+        }
+        else {
+            return false;
+        }
+    }
+    // same as between(t, 0, ticks)
+    fn before(t: Trigger, ticks: u32) bool {
+        const s = since(t);
+        if (s != DisabledTicks) {
+            return s < ticks;
+        }
+        else {
+            return false;
+        }
+    }
+};
+
+//--- rendering system ---------------------------------------------------------
 const Gfx = struct {
     // vertex-structure for rendering background tiles and sprites
     const Vertex = packed struct {
@@ -45,8 +297,10 @@ const Gfx = struct {
         pos: ivec2 = ivec2{0,0},
     };
 
-    // current fade opacity
-    fade: u8 = 0,
+    // fade in/out
+    fadein: Trigger = .{},
+    fadeout: Trigger = .{},
+    fade: u8 = 0xFF,
 
     // 'hardware sprites' (meh, array default initialization sure looks awkward...)
     sprites: [NumSprites]Sprite = [_]Sprite{.{}} ** NumSprites,
@@ -158,13 +412,26 @@ fn gfxColorText(pos: ivec2, color_code: u8, text: []const u8) void {
     }
 }
 
+fn gfxText(pos: ivec2, text: []const u8) void {
+    var p = pos;
+    for (text) |chr| {
+        if (p[0] < DisplayTilesX) {
+            gfxChar(p, chr);
+            p[0] += 1;
+        }
+        else {
+            break;
+        }
+    }
+}
+
 fn gfxClearSprites() void {
     for (state.gfx.sprites) |*spr| {
         spr.* = .{};
     }
 }
 
-fn gfxDrawFrame() void {
+fn gfxFrame() void {
     // handle fade-in/out
     gfxUpdateFade();
 
@@ -237,7 +504,20 @@ fn gfxAddTileVertices(x: u32, y: u32, tile_code: u32, color_code: u32) void {
 }
 
 fn gfxUpdateFade() void {
-    // FIXME
+    if (state.gfx.fadein.before(FadeTicks)) {
+        const t = @intToFloat(f32, state.gfx.fadein.since()) / FadeTicks;
+        state.gfx.fade = @floatToInt(u8, 255.0 * (1.0 - t));
+    }
+    if (state.gfx.fadein.afterOnce(FadeTicks)) {
+        state.gfx.fade = 0;
+    }
+    if (state.gfx.fadeout.before(FadeTicks)) {
+        const t = @intToFloat(f32, state.gfx.fadeout.since()) / FadeTicks;
+        state.gfx.fade = @floatToInt(u8, 255.0 * t);
+    }
+    if (state.gfx.fadeout.afterOnce(FadeTicks)) {
+        state.gfx.fade = 255;
+    }
 }
 
 fn gfxAddPlayfieldVertices() void {
@@ -289,7 +569,21 @@ fn gfxAddDebugMarkerVertices() void {
 }
 
 fn gfxAddFadeVertices() void {
+    // sprite tile 64 is a special opaque sprite
+    const dtx = @intToFloat(f32, SpriteWidth) / TileTextureWidth;
+    const dty = @intToFloat(f32, SpriteHeight) / TileTextureHeight;
+    const tx0 = 64 * dtx;
+    const tx1 = tx0 + dtx;
+    const ty0 = @intToFloat(f32, TileHeight) / TileTextureHeight;
+    const ty1 = ty0 + dty;
 
+    const fade = state.gfx.fade;
+    gfxAddVertex(0.0, 0.0, tx0, ty0, 0, fade);
+    gfxAddVertex(1.0, 0.0, tx1, ty0, 0, fade);
+    gfxAddVertex(1.0, 1.0, tx1, ty1, 0, fade);
+    gfxAddVertex(0.0, 0.0, tx0, ty0, 0, fade);
+    gfxAddVertex(1.0, 1.0, tx1, ty1, 0, fade);
+    gfxAddVertex(0.0, 1.0, tx0, ty1, 0, fade);
 }
 
 //  8x4 tile decoder (taken from: https://github.com/floooh/chips/blob/master/systems/namco.h)
@@ -554,29 +848,53 @@ fn gfxCreateResources() void {
 
 //--- sokol-app callbacks ------------------------------------------------------
 export fn init() void {
+    stm.setup();
     gfxInit();
+    if (DbgSkipIntro) {
+        state.game.started.start();
+    }
+    else {
+        state.intro.started.start();
+    }
 }
 
 export fn frame() void {
-    gfxClear(0x40, 0x10);
-    gfxClearSprites();
-    gfxColorText(.{8, 12}, 9, "HELLO WORLD!");
-    var i: u8 = 0;
-    while (i < 4): (i += 1) {
-        state.gfx.sprites[i] = .{
-            .enabled = true,
-            .pos = .{ 60 + i*20, 120 },
-            .tile = 32,
-            .color = 1 + i*2
-        };
+
+    // run the game at a fixed tick rate regardless of frame rate
+    var frame_time_ns = stm.ns(stm.laptime(&state.timing.laptime_store));
+    // clamp max frame duration (so the timing isn't messed up when stepping in debugger)
+    if (frame_time_ns > MaxFrameTimeNS) {
+        frame_time_ns = MaxFrameTimeNS;
     }
-    state.gfx.sprites[4] = .{
-        .enabled = true,
-        .pos = .{ 150, 120 },
-        .tile = 44,
-        .color = 9,
-    };
-    gfxDrawFrame();
+
+    state.timing.tick_accum += @floatToInt(i32, frame_time_ns);
+    while (state.timing.tick_accum > -TickToleranceNS) {
+        state.timing.tick_accum -= TickDurationNS;
+        state.timing.tick += 1;
+
+        // check for game state change
+        if (state.intro.started.now()) {
+            state.gamestate = .Intro;
+        }
+        if (state.game.started.now()) {
+            state.gamestate = .Game;
+        }
+
+        // call the top-level gamestate tick function
+        switch (state.gamestate) {
+            .Intro => introTick(),
+            .Game => gameTick(),
+        }
+    }
+    gfxFrame();
+}
+
+export fn input(ev: ?*const sapp.Event) void {
+    const event = ev.?;
+    if ((event.type == .KEY_DOWN) or (event.type == .KEY_UP)) {
+        const key_pressed = event.type == .KEY_DOWN;
+        state.input.onKey(event.key_code, key_pressed);
+    }
 }
 
 export fn cleanup() void {
@@ -587,6 +905,7 @@ pub fn main() void {
     sapp.run(.{
         .init_cb = init,
         .frame_cb = frame,
+        .event_cb = input,
         .cleanup_cb = cleanup,
         .width = 2 * DisplayPixelsX,
         .height = 2 * DisplayPixelsY,
