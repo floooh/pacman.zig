@@ -143,7 +143,52 @@ const Fruit = enum {
     Grapes,
     Galaxian,
     Bell,
-    Key
+    Key,
+
+    // as background tile code...
+    fn tile(fruit: Fruit) u8 {
+        return switch (fruit) {
+            .None       => TileCodeSpace,
+            .Cherries   => TileCodeCherries,
+            .Strawberry => TileCodeStrawberry,
+            .Peach      => TileCodePeach,
+            .Apple      => TileCodeApple,
+            .Grapes     => TileCodeGrapes,
+            .Galaxian   => TileCodeGalaxian,
+            .Bell       => TileCodeBell,
+            .Key        => TileCodeKey,
+        };
+    }
+
+    // as color code...
+    fn color(fruit: Fruit) u8 {
+        return switch (fruit) {
+            .None       => ColorCodeBlank,
+            .Cherries   => ColorCodeCherries,
+            .Strawberry => ColorCodeStrawberry,
+            .Peach      => ColorCodePeach,
+            .Apple      => ColorCodeApple,
+            .Grapes     => ColorCodeGrapes,
+            .Galaxian   => ColorCodeGalaxian,
+            .Bell       => ColorCodeBell,
+            .Key        => ColorCodeKey,
+        };
+    }
+
+    // as sprite tile code
+    fn sprite(fruit: Fruit) u8 {
+        return switch (fruit) {
+            .None       => SpriteCodeInvisible,
+            .Cherries   => SpriteCodeCherries,
+            .Strawberry => SpriteCodeStrawberry,
+            .Peach      => SpriteCodePeach,
+            .Apple      => SpriteCodeApple,
+            .Grapes     => SpriteCodeGrapes,
+            .Galaxian   => SpriteCodeGalaxian,
+            .Bell       => SpriteCodeBell,
+            .Key        => SpriteCodeKey,
+        };
+    }
 };
 
 //--- Game gamestate -----------------------------------------------------------
@@ -294,7 +339,7 @@ fn gameTick() void {
     if (0 != state.game.freeze) {
         // FIXME!
     }
-    //gameUpdateTiles();
+    gameUpdateTiles();
     //gameUpdateSprites();
 
     // update hiscore if broken
@@ -456,6 +501,65 @@ fn gameRoundInit() void {
     state.game.force_leave_house.start();
 
     // FIXME: init Pacman and Ghost state
+}
+
+// update dynamic background tiles
+fn gameUpdateTiles() void {
+    // print score and hiscore
+    gfxColorScore(.{6,1}, ColorCodeDefault, state.game.score);
+    if (state.game.hiscore > 0) {
+        gfxColorScore(.{16,1}, ColorCodeDefault, state.game.hiscore);
+    }
+
+    // update the energizer pill state (blinking/non-blinking)
+    const pill_pos = [NumPills]ivec2 { .{1,6}, .{26,6}, .{1,26}, .{26,26} };
+    for (pill_pos) |pos| {
+        if (0 != state.game.freeze) {
+            gfxColor(pos, ColorCodeDot);
+        }
+        else {
+            gfxColor(pos, if (0 != (state.timing.tick & 8)) ColorCodeDot else ColorCodeBlank);
+        }
+    }
+
+    // clear the fruit-eaten score after Pacman has eaten a bonus fruit
+    if (state.game.fruit_eaten.afterOnce(2*60)) {
+        // FIXME!
+        // gfxFruitScore(.None);
+        assert(false);
+    }
+
+    // remaining lives in bottom-left corner
+    {
+        var i: i16 = 0;
+        while (i < NumLives): (i += 1) {
+            const color: u8 = if (i < state.game.num_lives) ColorCodePacman else ColorCodeBlank;
+            gfxColorTileQuad(.{2+2*i,34}, color, TileCodeLife);
+        }
+    }
+
+    // bonus fruits in bottom-right corner
+    {
+        var i: i32 = @intCast(i32,state.game.round) - 7 + 1;
+        var x: i16 = 24;
+        while (i <= state.game.round): (i += 1) {
+            if (i >= 0) {
+                const fruit = gameLevelSpec(@intCast(u32,i)).bonus_fruit;
+                gfxColorTileQuad(.{x,34}, fruit.color(), fruit.tile());
+                x -= 2;
+            }
+        }
+    }
+
+    // if game round was won, render the entire playfield as blinking blue/white
+    if (state.game.round_won.after(1*60)) {
+        if (0 != (state.game.round_won.since() & 0x10)) {
+            gfxClearPlayfieldToColor(ColorCodeDot);
+        }
+        else {
+            gfxClearPlayfieldToColor(ColorCodeWhiteBorder);
+        }
+    }
 }
 
 //--- Intro gamestate ----------------------------------------------------------
@@ -837,6 +941,25 @@ fn gfxColorScore(pos: ivec2, color_code: u8, score: u32) void {
         }
     }
 }
+
+// draw a colored tile-quad arranged as:
+// |t+1|t+0|
+// |t+3|t+2|
+//
+// This is (for instance) used to render the current "lives" and fruit
+// symbols at the lower border.
+//
+fn gfxColorTileQuad(pos: ivec2, color_code: u8, tile_code: u8) void {
+    var yy: i16 = 0;
+    while (yy < 2): (yy += 1) {
+        var xx: i16 = 0;
+        while (xx < 2): (xx += 1) {
+            const t: u8 = tile_code + @intCast(u8,yy)*2 + (1 - @intCast(u8,xx));
+            gfxColorTile(pos + ivec2{xx,yy}, color_code, t);
+        }
+    }
+}
+
 
 fn gfxClearSprites() void {
     for (state.gfx.sprites) |*spr| {
