@@ -2,12 +2,6 @@ const sg = @import("sokol").gfx;
 const sapp = @import("sokol").app;
 const sgapp = @import("sokol").app_gfx_glue;
 
-// embedded Pacman arcade machine ROM dumps
-const TileRom = @embedFile("roms/pacman_tiles.rom");
-const SpriteRom = @embedFile("roms/pacman_sprites.rom");
-const ColorRom = @embedFile("roms/pacman_hwcolors.rom");
-const PaletteRom = @embedFile("roms/pacman_palette.rom");
-
 // various constants
 const NumSprites = 8;
 const NumDebugMarkers = 16;
@@ -333,6 +327,7 @@ void {
 }
 
 // decode an 8x8 tile into the tile texture upper 8 pixels
+const TileRom = @embedFile("roms/pacman_tiles.rom");
 fn gfxDecodeTile(tile_code: u32) void {
     const x = tile_code * TileWidth;
     const y0 = 0;
@@ -342,6 +337,7 @@ fn gfxDecodeTile(tile_code: u32) void {
 }
 
 // decode a 16x16 sprite into the tile textures lower 16 pixels
+const SpriteRom = @embedFile("roms/pacman_sprites.rom");
 fn gfxDecodeSprite(sprite_code: u32) void {
     const x0 = sprite_code * SpriteWidth;
     const x1 = x0 + TileWidth;
@@ -385,6 +381,7 @@ fn gfxDecodeTiles() void {
 // (of which only 16 entries are used on the Pacman hardware)
 //
 fn gfxDecodeColorPalette() void {
+
     // Expand the 8-bit palette ROM items into RGBA8 items.
     // The 8-bit palette item bits are packed like this:
     // 
@@ -392,9 +389,10 @@ fn gfxDecodeColorPalette() void {
     // |B1|B0|G2|G1|G0|R2|R1|R0|
     //
     // Intensities for the 3 bits are: 0x97 + 0x47 + 0x21
+    const color_rom = @embedFile("roms/pacman_hwcolors.rom");
     var hw_colors: [32]u32 = undefined;
     for (hw_colors) |*pt, i| {
-        const rgb = ColorRom[i];
+        const rgb = color_rom[i];
         const r: u32 = ((rgb>>0)&1)*0x21 + ((rgb>>1)&1)*0x47 + ((rgb>>2)&1)*0x97;
         const g: u32 = ((rgb>>3)&1)*0x21 + ((rgb>>4)&1)*0x47 + ((rgb>>5)&1)*0x97;
         const b: u32 =                     ((rgb>>6)&1)*0x47 + ((rgb>>7)&1)*0x97;
@@ -402,8 +400,9 @@ fn gfxDecodeColorPalette() void {
     }
 
     // build 256-entry from indirection palette ROM
+    const palette_rom = @embedFile("roms/pacman_palette.rom");
     for (state.gfx.color_palette) |*pt, i| {
-        pt.* = hw_colors[PaletteRom[i] & 0xF];
+        pt.* = hw_colors[palette_rom[i] & 0xF];
         // first color in each color block is transparent
         if ((i & 3) == 0) {
             pt.* &= 0x00_FF_FF_FF;
