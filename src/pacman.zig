@@ -431,6 +431,32 @@ fn gfxClearSprites() void {
     }
 }
 
+// adjust viewport so that aspect ration is always correct
+fn gfxAdjustViewport(canvas_width: i32, canvas_height: i32) void {
+    assert((canvas_width > 0) and (canvas_height > 0));
+    const fwidth = @intToFloat(f32, canvas_width);
+    const fheight = @intToFloat(f32, canvas_height);
+    const canvas_aspect = fwidth / fheight;
+    const playfield_aspect = @intToFloat(f32, DisplayTilesX) / DisplayTilesY;
+    const border = 10;
+    if (playfield_aspect < canvas_aspect) {
+        const vp_y: i32 = border;
+        const vp_h: i32 = canvas_height - 2*border;
+        const vp_w: i32 = @floatToInt(i32, fheight * playfield_aspect) - 2*border;
+        // FIXME: why is /2 not possible here?
+        const vp_x: i32 = (canvas_width - vp_w) >> 1;
+        sg.applyViewport(vp_x, vp_y, vp_w, vp_h, true);
+    }
+    else {
+        const vp_x: i32 = border;
+        const vp_w: i32 = canvas_width - 2*border;
+        const vp_h: i32 = @floatToInt(i32, fwidth / playfield_aspect) - 2*border;
+        // FIXME: why is /2 not possible here?
+        const vp_y: i32 = (canvas_height - vp_h) >> 1;
+        sg.applyViewport(vp_x, vp_y, vp_w, vp_h, true);
+    }
+}
+
 fn gfxFrame() void {
     // handle fade-in/out
     gfxUpdateFade();
@@ -457,6 +483,7 @@ fn gfxFrame() void {
     const canvas_width = sapp.width();
     const canvas_height = sapp.height();
     sg.beginDefaultPass(state.gfx.pass_action, canvas_width, canvas_height);
+    gfxAdjustViewport(canvas_width, canvas_height);
     sg.applyPipeline(state.gfx.display.pip);
     sg.applyBindings(state.gfx.display.bind);
     sg.draw(0, 4, 1);
@@ -675,7 +702,6 @@ fn gfxDecodeTiles() void {
 // (of which only 16 entries are used on the Pacman hardware)
 //
 fn gfxDecodeColorPalette() void {
-
     // Expand the 8-bit palette ROM items into RGBA8 items.
     // The 8-bit palette item bits are packed like this:
     // 
