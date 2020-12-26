@@ -443,12 +443,12 @@ fn gfxCreateResources() void {
         shd_desc.fs.images[1] = .{ .name = "pal_tex", .type = ._2D };
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11 => undefined,
-            .GLCORE33 => GLCore33.Offscreen.VertexShader,
+            .GLCORE33 => @embedFile("shaders/offscreen_vs.v330.glsl"),
             else => unreachable,
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
             .D3D11 => undefined,
-            .GLCORE33 => GLCore33.Offscreen.FragmentShader,
+            .GLCORE33 => @embedFile("shaders/offscreen_fs.v330.glsl"),
             else => unreachable,
         };
         var pip_desc: sg.PipelineDesc = .{
@@ -474,12 +474,12 @@ fn gfxCreateResources() void {
         shd_desc.fs.images[0] = .{ .name = "tex", .type = ._2D };
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11 => undefined,
-            .GLCORE33 => GLCore33.Display.VertexShader,
+            .GLCORE33 => @embedFile("shaders/display_vs.v330.glsl"),
             else => unreachable
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
             .D3D11 => undefined,
-            .GLCORE33 => GLCore33.Display.FragmentShader,
+            .GLCORE33 => @embedFile("shaders/display_fs.v330.glsl"),
             else => unreachable
         };
         var pip_desc: sg.PipelineDesc = .{
@@ -594,56 +594,3 @@ pub fn main() void {
         .window_title = "pacman.zig"
     });
 }
-
-// platform-specific shader sources:
-const GLCore33 = struct {
-    const Offscreen = struct {
-        const VertexShader =
-            \\ #version 330
-            \\ layout(location=0) in vec4 pos;
-            \\ layout(location=1) in vec2 uv_in;
-            \\ layout(location=2) in vec4 data_in;
-            \\ out vec2 uv;
-            \\ out vec4 data;
-            \\ void main() {
-            \\   gl_Position = vec4((pos.xy - 0.5) * vec2(2.0, -2.0), 0.5, 1.0);
-            \\   uv = uv_in;
-            \\   data = data_in;
-            \\ }
-            ;
-        const FragmentShader =
-            \\ #version 330
-            \\ uniform sampler2D tile_tex;
-            \\ uniform sampler2D pal_tex;
-            \\ in vec2 uv;
-            \\ in vec4 data;
-            \\ out vec4 frag_color;
-            \\ void main() {
-            \\   float color_code = data.x;
-            \\   float tile_color = texture(tile_tex, uv).x;
-            \\   vec2 pal_uv = vec2(color_code * 4 + tile_color, 0);
-            \\   frag_color = texture(pal_tex, pal_uv) * vec4(1, 1, 1, data.y);
-            \\ }
-            ;
-    };
-    const Display = struct {
-        const VertexShader =
-            \\ #version 330
-            \\ layout(location=0) in vec4 pos;
-            \\ out vec2 uv;
-            \\ void main() {
-            \\   gl_Position = vec4((pos.xy - 0.5) * 2.0, 0.0, 1.0);
-            \\   uv = pos.xy;
-            \\ }
-            ;
-        const FragmentShader =
-            \\ #version 330
-            \\ uniform sampler2D tex;
-            \\ in vec2 uv;
-            \\ out vec4 frag_color;
-            \\ void main() {
-            \\   frag_color = texture(tex, uv);
-            \\ }
-            ;
-    };
-};
