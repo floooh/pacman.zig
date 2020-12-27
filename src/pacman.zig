@@ -7,7 +7,7 @@ const assert = @import("std").debug.assert;
 const warn = @import("std").debug.warn;
 
 // debugging options
-const DbgSkipIntro = false;         // set to true to skip intro gamestate
+const DbgSkipIntro = true;         // set to true to skip intro gamestate
 const DbgSkipPrelude = false;       // set to true to skip prelude at start of gameloop
 const DbgStartRound = 0;            // set to any starting round <= 255
 const DbgShowMarkers = false;       // set to true to display debug markers
@@ -106,7 +106,7 @@ const GameState = enum {
     Game,
 };
 
-const Dir = enum {
+const Dir = enum(u8) {
     Right,
     Down,
     Left,
@@ -195,6 +195,7 @@ const Fruit = enum {
 
 // gameplay constants
 const NumLives = 3;
+const NumGhosts = 4;
 const NumDots = 244;
 const NumPills = 4;
 const AntePortasX = 14*TileWidth;   // x/y position of ghost hour entry
@@ -213,7 +214,92 @@ const FreezeEatGhost:   u8 = (1<<2);
 const FreezeDead:       u8 = (1<<3);
 const FreezeWon:        u8 = (1<<4);
 
+// common ghost and Pacman state
+const Actor = struct {
+    dir:        Dir = .Right,
+    pos:        ivec2 = ivec2{0,0},
+    anim_tick:  u32 = 0,
+
+    // convert the actor's position to a sprite position (midpoint at center to topleft)
+    fn sprite_pos(self:*const Actor) ivec2 {
+        return .{ self.pos[0] - SpriteWidth/2, self.pos[1] - SpriteHeight/2 };
+    }
+};
+
+const GhostType = enum(u8) {
+    Blinky,
+    Pinky,
+    Inky,
+    Clyde,
+};
+const GhostState = enum {
+    None,
+    Chase,      // currently chasing Pacman
+    Scatter,    // currently heading towards the corner scatter targets
+    Frightened, // frightened after Pacman has eaten an energizer pill
+    Eyes,       // eaten by Pacman and heading back to the ghost house
+    House,      // currently inside the ghost house
+    LeaveHouse, // currently leaving the ghost house
+    EnterHouse, // currently entering the ghost house
+};
+
+const Ghost = struct {
+    actor:          Actor = .{},
+    type:           GhostType = .Blinky,
+    next_dir:       Dir = .Right,
+    target_pos:     ivec2 = ivec2{0,0},
+    state:          GhostState = .None,
+    frightened:     Trigger = .{},
+    eaten:          Trigger = .{},
+    dot_counter:    u16 = 0,
+    dot_limit:      u16 = 0,
+    
+    // shortcut to get pointer to ghost by type
+    fn ptr(ghost_type: GhostType) *Ghost {
+        return &state.game.ghosts[@enumToInt(ghost_type)];
+    }
+    fn blinky() *Ghost {
+        return ptr(.Blinky);
+    }
+    fn pinky() *Ghost {
+        return ptr(.Pinky);
+    }
+    fn inky() *Ghost {
+        return ptr(.Inky);
+    }
+    fn clyde() *Ghost {
+        return ptr(.Clyde);
+    }
+    // target position (pixels) when heading back to ghost house
+    // (same as startingPos except Blinky's)
+    fn ghostHouseTargetPos(ghost_type: GhostType) ivec2 {
+        return switch (ghost_type) {
+            .Blinky => .{ 14*8, 17*8 + 4 },
+            .Pinky  => .{ 14*8, 17*8 + 4 },
+            .Inky   => .{ 12*8, 17*8 + 4 },
+            .Clyde  => .{ 16*8, 17*8 + 4 },
+        };
+    }
+    // ghost scatter target positions in tiles
+    fn scatterTargetPos(ghost_type: GhostType) ivec2 {
+        return switch (ghost_type) {
+            .Blinky => .{ 25,  0 }, 
+            .Pinky  => .{  2,  0 },
+            .Inky   => .{ 27, 34 }, 
+            .Clyde  => .{  0, 34 },
+        };
+    }
+};
+
+// Pacman state
+const Pacman = struct {
+    actor: Actor = .{},
+};
+
 const Game = struct {
+
+    pacman: Pacman = .{},
+    ghosts: [NumGhosts]Ghost = [_]Ghost{.{}} ** NumGhosts,
 
     xorshift:           u32 = 0x12345678,   // xorshift random-number-generator state
     score:              u32 = 0,
@@ -340,7 +426,7 @@ fn gameTick() void {
         // FIXME!
     }
     gameUpdateTiles();
-    //gameUpdateSprites();
+    gameUpdateSprites();
 
     // update hiscore if broken
     if (state.game.score > state.game.hiscore) {
@@ -500,7 +586,62 @@ fn gameRoundInit() void {
     // hasn't been eating dots for a while
     state.game.force_leave_house.start();
 
-    // FIXME: init Pacman and Ghost state
+    // Pacman starts running to the left
+    state.game.pacman = .{
+        .actor = .{
+            .dir = .Left,
+            .pos = .{ 14*8, 26*8+4 }
+        }
+    };
+    // Blinky starts outside the ghost house, looking to the left and in scatter mode
+    Ghost.blinky().* = .{
+        .actor = .{
+            .dir = .Left,
+            .pos = .{ 14*8, 14*8 + 4 },
+        },
+        .type = .Blinky,
+        .next_dir = .Left,
+        .state = .Scatter
+    };
+    // Pinky starts in the middle slot of the ghost house, heading down
+    Ghost.pinky().* = .{
+        .actor = .{
+            .dir = .Down,
+            .pos = .{ 14*8, 17*8 + 4 },
+        },
+        .type = .Pinky,
+        .next_dir = .Down,
+        .state = .House,
+    };
+    // Inky starts in the left slot of the ghost house, moving up
+    Ghost.inky().* = .{
+        .actor = .{
+            .dir = .Up,
+            .pos = .{ 12*8, 17*8 + 4 },
+        },
+        .type = .Inky,
+        .next_dir = .Up,
+        .state = .House,
+        .dot_limit = 30,
+    };
+    // Clyde starts in the righ slot of the ghost house, moving up
+    Ghost.clyde().* = .{
+        .actor = .{
+            .dir = .Up,
+            .pos = .{ 16*8, 17*8 + 4 },
+        },
+        .type = .Clyde,
+        .next_dir = .Up,
+        .state = .House,
+        .dot_limit = 60
+    };
+    
+    // reset sprites
+    Sprite.pacman().* = .{ .enabled = true, .color = ColorCodePacman };
+    Sprite.blinky().* = .{ .enabled = true, .color = ColorCodeBlinky };
+    Sprite.pinky().*  = .{ .enabled = true, .color = ColorCodePinky  };
+    Sprite.inky().*   = .{ .enabled = true, .color = ColorCodeInky   };
+    Sprite.clyde().*  = .{ .enabled = true, .color = ColorCodeClyde  };
 }
 
 // update dynamic background tiles
@@ -559,6 +700,90 @@ fn gameUpdateTiles() void {
         else {
             gfxClearPlayfieldToColor(ColorCodeWhiteBorder);
         }
+    }
+}
+
+// update sprite images
+fn gameUpdateSprites() void {
+    // update Pacman sprite
+    {
+        var spr = Sprite.pacman();
+        if (spr.enabled) {
+            const actor = &state.game.pacman.actor;
+            spr.pos = actor.sprite_pos();
+            if (0 != (state.game.freeze & FreezeEatGhost)) {
+                // hide Pacman shortly after he's eaten a ghost
+                spr.tile = SpriteCodeInvisible;
+            }
+            else if (0 != (state.game.freeze & (FreezePrelude|FreezeReady))) {
+                // special case game frozen at start of round, show "closed mouth" Pacman
+                spr.tile = SpriteCodePacmanClosedMouth;
+            }
+            else if (0 != (state.game.freeze & (FreezeDead))) {
+                // play the Pacman death animation after a short pause
+                if (state.game.pacman_eaten.after(PacmanEatenTicks)) {
+                    // FIXME!
+                    assert(false);
+                }
+            }
+            else {
+                // regular Pacman animation
+                spr.animPacman(actor.dir, actor.anim_tick);
+            }
+        }
+    }
+
+    // update ghost sprites
+    // FIXME: Zig doesn't allow a const pointer in the loop?
+    for (state.game.ghosts) |*ghost, i| {
+        var spr = Sprite.ghost(ghost.type);
+        if (spr.enabled) {
+            spr.pos = ghost.actor.sprite_pos();
+            // if Pacman has just died, hide ghosts
+            if (0 != (state.game.freeze & FreezeDead)) {
+                if (state.game.pacman_eaten.after(PacmanEatenTicks)) {
+                    spr.tile = SpriteCodeInvisible;
+                }
+            }
+            // if Pacman has won the round, hide the ghosts
+            else if (0 != (state.game.freeze & FreezeWon)) {
+                spr.tile = SpriteCodeInvisible;
+            }
+            else switch (ghost.state) {
+                .Eyes => {
+                    // FIXME
+                    assert(false);
+                },
+                .EnterHouse => {
+                    // FIXME: show ghost eyes
+                    assert(false);
+                },
+                .Frightened => {
+                    // FIXME
+                    assert(false);
+                },
+                else => {
+                    // show the regular ghost sprite image, the ghost's
+                    // 'next_dir' is used to visualize the direction the ghost
+                    // is heading to, this has the effect that ghosts already look
+                    // into the direction they will move into one tile ahead
+                    spr.animGhost(ghost.type, ghost.next_dir, ghost.actor.anim_tick);
+                }
+            }
+        }
+    }
+
+    // hide or display the currently active bonus fruit
+    if (state.game.active_fruit == .None) {
+        Sprite.fruit().enabled = false;
+    }
+    else {
+        Sprite.fruit().* = .{
+            .enabled = true,
+            .pos = .{ 13 * TileWidth, 19 * TileHeight + TileHeight/2 },
+            .tile = Fruit.tile(state.game.active_fruit),
+            .color = Fruit.color(state.game.active_fruit)
+        };
     }
 }
 
@@ -665,19 +890,6 @@ const Input = struct {
         }
         return default_dir;
     }
-    fn onKey(self: *Input, keycode: sapp.Keycode, key_pressed: bool) void {
-        if (self.enabled) {
-            self.anykey = key_pressed;
-            switch (keycode) {
-                .W, .UP,    => self.up = key_pressed,
-                .S, .DOWN,  => self.down = key_pressed,
-                .A, .LEFT,  => self.left = key_pressed,
-                .D, .RIGHT, => self.right = key_pressed,
-                .ESCAPE     => self.esc = key_pressed,
-                else => {}
-            }
-        }
-    }
 };
 
 //--- time-trigger system ------------------------------------------------------
@@ -762,22 +974,74 @@ const TileTextureHeight = TileHeight + SpriteHeight;
 const NumSprites = 8;
 const MaxVertices = ((DisplayTilesX*DisplayTilesY) + NumSprites + NumDebugMarkers) * 6;
 
+// a 'hardware sprite' struct
+const Sprite = struct {
+    enabled: bool = false,
+    tile: u8 = 0,
+    color: u8 = 0,
+    flipx: bool = false,
+    flipy: bool = false,
+    pos: ivec2 = ivec2{0,0},
+
+    // shortcuts to get sprite pointers by name
+    fn pacman() *Sprite {
+        return &state.gfx.sprites[0];
+    }
+    fn ghost(ghost_type: GhostType) *Sprite {
+        return &state.gfx.sprites[@enumToInt(ghost_type) + 1];
+    }
+    fn blinky() *Sprite {
+        return &state.gfx.sprites[1];
+    }
+    fn pinky() *Sprite {
+        return &state.gfx.sprites[2];
+    }
+    fn inky() *Sprite {
+        return &state.gfx.sprites[3];
+    }
+    fn clyde() *Sprite {
+        return &state.gfx.sprites[4];
+    }
+    fn fruit() *Sprite {
+        return &state.gfx.sprites[5];
+    }
+
+    // set sprite animation to animated pacman
+    fn animPacman(self: *Sprite, dir: Dir, tick: u32) void {
+        const tiles = [2][4]u8 {
+            [_]u8 { 44, 46, 48, 46 }, // horizontal (needs flipx)
+            [_]u8 { 45, 47, 48, 47 }  // vertical (needs flipy)
+        };
+        const phase = (tick / 4) & 3;
+        self.enabled = true;
+        self.tile = tiles[@enumToInt(dir) & 1][phase];
+        self.color = ColorCodePacman;
+        self.flipx = (dir == .Left);
+        self.flipy = (dir == .Up);
+    }
+
+    // set sprite anim to animated ghost
+    fn animGhost(self: *Sprite, ghost_type: GhostType, dir: Dir, tick: u32) void {
+        const tiles = [4][2]u8 {
+            [_]u8 { 32, 33 },   // right
+            [_]u8 { 34, 35 },   // down
+            [_]u8 { 36, 37 },   // left
+            [_]u8 { 38, 39 },   // up
+        };
+        const phase = (tick / 8) & 1;
+        self.tile = tiles[@enumToInt(dir)][phase];
+        self.color = ColorCodeBlinky + @enumToInt(ghost_type)*2;
+        self.flipx = false;
+        self.flipy = false;
+    }
+};
+
 const Gfx = struct {
     // vertex-structure for rendering background tiles and sprites
     const Vertex = packed struct {
         x: f32, y: f32,     // 2D-pos
         u: f32, v: f32,     // texcoords
         attr: u32,          // color code and opacity
-    };
-
-    // a 'hardware sprite' struct
-    const Sprite = struct {
-        enabled: bool = false,
-        tile: u8 = 0,
-        color: u8 = 0,
-        flipx: bool = false,
-        flipy: bool = false,
-        pos: ivec2 = ivec2{0,0},
     };
 
     // fade in/out
@@ -959,7 +1223,6 @@ fn gfxColorTileQuad(pos: ivec2, color_code: u8, tile_code: u8) void {
         }
     }
 }
-
 
 fn gfxClearSprites() void {
     for (state.gfx.sprites) |*spr| {
@@ -1455,7 +1718,17 @@ export fn input(ev: ?*const sapp.Event) void {
     const event = ev.?;
     if ((event.type == .KEY_DOWN) or (event.type == .KEY_UP)) {
         const key_pressed = event.type == .KEY_DOWN;
-        state.input.onKey(event.key_code, key_pressed);
+        if (state.input.enabled) {
+            state.input.anykey = key_pressed;
+            switch (event.key_code) {
+                .W, .UP,    => state.input.up = key_pressed,
+                .S, .DOWN,  => state.input.down = key_pressed,
+                .A, .LEFT,  => state.input.left = key_pressed,
+                .D, .RIGHT, => state.input.right = key_pressed,
+                .ESCAPE     => state.input.esc = key_pressed,
+                else => {}
+            }
+        }
     }
 }
 
