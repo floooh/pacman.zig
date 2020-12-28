@@ -569,7 +569,16 @@ fn gameUpdateActors() void {
             actor.pos = move(actor.pos, actor.dir, allow_cornering);
             actor.anim_tick += 1;
         }
-        // FIXME: collision checks
+        // eat dot or energizer pill?
+        const tile_pos = pixelToTilePos(actor.pos);
+        if (isDot(tile_pos)) {
+            gfxTile(tile_pos, TileCodeSpace);
+            state.game.score += 1;
+            state.game.dot_eaten.start();
+            state.game.force_leave_house.start();
+            gameUpdateDotEaten();
+            gameUpdateGhostHouseDotCounters();
+        }
     }
 }
 
@@ -586,6 +595,71 @@ fn gamePacmanShouldMove() bool {
     }
     else {
         return 0 != (state.timing.tick % 8);
+    }
+}
+
+// called when a dot or pill has been eaten, checks if a round has been won
+// (all dots and pills eaten), whether to show the bonus fruit, and finally
+// plays the dot-eaten sound effect
+fn gameUpdateDotEaten() void {
+    state.game.num_dots_eaten += 1;
+    switch (state.game.num_dots_eaten) {
+        NumDots => {
+            // all dots eaten, round won
+            state.game.round_won.start();
+            // FIXME
+            // soundClear();
+        },
+        70, 170 => {
+            // at 70 and 170 dots, show the bonus fruit
+            state.game.fruit_active.start();
+        },
+        else => {}
+    }
+
+    // FIXME: play alternativ crunch sound effect
+    if (0 != (state.game.num_dots_eaten & 1)) {
+        // FIXME
+    }
+    else {
+        // FIXME
+    }
+}
+
+// Update the dot counters used to decide whether ghosts must leave the house.
+// 
+// This is called each time Pacman eats a dot.
+// 
+// Each ghost has a dot limit which is reset at the start of a round. Each time
+// Pacman eats a dot, the highest priority ghost in the ghost house counts
+// down its dot counter.
+// 
+// When the ghost's dot counter reaches zero the ghost leaves the house
+// and the next highest-priority dot counter starts counting.
+// 
+// If a life is lost, the personal dot counters are deactivated and instead
+// a global dot counter is used.
+// 
+// If pacman doesn't eat dots for a while, the next ghost is forced out of the
+// house using a timer.
+// 
+fn gameUpdateGhostHouseDotCounters() void {
+    // if the new round was started because Pacman lost a life, use the global
+    // dot counter (this mode will be deactivated again after all ghosts left the
+    // house)
+    if (state.game.global_dot_counter_active) {
+        state.game.global_dot_counter += 1;
+    }
+    else {
+        // otherwise each ghost has his own personal dot counter to decide
+        // when to leave the ghost house, the dot counter is only increments
+        // for the first ghost below the dot limit
+        for (state.game.ghosts) |*ghost| {
+            if (ghost.dot_counter < ghost.dot_limit) {
+                ghost.dot_counter += 1;
+                break;
+            }
+        }
     }
 }
 
@@ -914,7 +988,7 @@ fn gameUpdateSprites() void {
         Sprite.fruit().* = .{
             .enabled = true,
             .pos = .{ 13 * TileWidth, 19 * TileHeight + TileHeight/2 },
-            .tile = Fruit.tile(state.game.active_fruit),
+            .tile = Fruit.sprite(state.game.active_fruit),
             .color = Fruit.color(state.game.active_fruit)
         };
     }
@@ -1335,7 +1409,7 @@ fn gfxColorScore(pos: ivec2, color_code: u8, score: u32) void {
             gfxColorChar(p, color_code, chr);
             p[0] -= 1;
             s /= 10;
-            if (0 == score) {
+            if (0 == s) {
                 break;
             }
         }
