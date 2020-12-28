@@ -1,4 +1,3 @@
-const bld = @import("std").build;
 const Builder = @import("std").build.Builder;
 const LibExeObjStep = @import("std").build.LibExeObjStep;
 const builtin = @import("std").builtin;
