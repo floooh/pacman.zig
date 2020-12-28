@@ -11,7 +11,7 @@ const warn = @import("std").debug.warn;
 const DbgSkipIntro = true;         // set to true to skip intro gamestate
 const DbgSkipPrelude = false;       // set to true to skip prelude at start of gameloop
 const DbgStartRound = 0;            // set to any starting round <= 255
-const DbgShowMarkers = false;       // set to true to display debug markers
+const DbgShowMarkers = true;       // set to true to display debug markers
 const DbgEscape = true;            // set to true to end game round with Escape
 const DbgDoubleSpeed = false;       // set to true to speed up game
 const DbgGodMode = false;           // set to true to make Pacman invulnerable
@@ -95,7 +95,36 @@ const State = struct {
 var state: State = .{};
 
 //--- helper structs and functions ---------------------------------------------
+
+// FIXME: hmm is it possible to add methods to ivec2 here?
 const ivec2 = @Vector(2,i16);
+
+// a xorshift random number generator
+fn xorshift32() u32 {
+    var x = state.game.xorshift;
+    x ^= x<<13;
+    x ^= x>>17;
+    x ^= x<<5;
+    state.game.xorshift = x;
+    return x;
+}
+
+// test if two ivec2 are nearly equal
+fn nearEqual(v0: ivec2, v1: ivec2, tolerance: i16) bool {
+    const d = v1 - v0;
+    // use our own sloppy abs(), math.absInt() can return a runtime error
+    const a: ivec2 = .{
+        if (d[0] < 0) -d[0] else d[0],
+        if (d[1] < 0) -d[1] else d[1]
+    };
+    return (a[0] < tolerance) and (a[1] < tolerance);
+}
+
+// squared distance between two ivec2
+fn squaredDistance(v0: ivec2, v1: ivec2) i16 {
+    const d = v1 - v0;
+    return d[0]*d[0] + d[1]*d[1];
+}
 
 // return the pixel difference from a pixel position to the next tile midpoint
 fn distToTileMid(pixel_pos: ivec2) ivec2 {
@@ -550,7 +579,27 @@ fn gameTick() void {
         }
     }
 
-    // FIXME: render debug markers
+    // render debug markers (current ghost targets)
+    if (DbgShowMarkers) {
+        for (state.game.ghosts) |*ghost, i| {
+            const tile: u8 = switch (ghost.state) {
+                .None => 'N',
+                .Chase => 'C',
+                .Scatter => 'S',
+                .Frightened => 'F',
+                .Eyes => 'E',
+                .House => 'H',
+                .LeaveHouse => 'L',
+                .EnterHouse => 'E',
+            };
+            state.gfx.debug_markers[i] = .{
+                .enabled = true,
+                .tile = tile,
+                .color = @intCast(u8, ColorCodeBlinky + 2*i),
+                .tile_pos = clampedTilePos(ghost.target_pos)
+            };
+        }
+    }
 }
 
 // the central Pacman- and ghost-behaviour function, called once per game tick
@@ -576,8 +625,300 @@ fn gameUpdateActors() void {
             state.game.score += 1;
             state.game.dot_eaten.start();
             state.game.force_leave_house.start();
-            gameUpdateDotEaten();
+            gameUpdateDotsEaten();
             gameUpdateGhostHouseDotCounters();
+        }
+        if (isPill(tile_pos)) {
+            gfxTile(tile_pos, TileCodeSpace);
+            state.game.score += 5;
+            state.game.pill_eaten.start();
+            state.game.num_ghosts_eaten = 0;
+            for (state.game.ghosts) |*ghost| {
+                ghost.frightened.start();
+            }
+            gameUpdateDotsEaten();
+            // FIXME: start frightened sound
+        }
+        // FIXME: eat bonus fruit
+        // FIXME: ghost collision
+    }
+
+    // ghost AIs
+    for (state.game.ghosts) |*ghost| {
+        // handle ghost state transitions
+        gameUpdateGhostState(ghost);
+        // update the ghosts target position
+        gameUpdateGhostTarget(ghost);
+        // finally, move the ghost towards its target position
+        const num_move_ticks = gameGhostSpeed(ghost);
+        var i: u32 = 0;
+        while (i < num_move_ticks): (i += 1) {
+            const force_move = gameUpdateGhostDir(ghost);
+            const allow_cornering = false;
+            if (force_move or canMove(ghost.actor.pos, ghost.actor.dir, allow_cornering)) {
+                ghost.actor.pos = move(ghost.actor.pos, ghost.actor.dir, allow_cornering);
+                ghost.actor.anim_tick += 1;
+            }
+        }
+    }
+}
+
+// this function takes care of switching ghosts into a new state, this is one
+// of two important functions of the ghost AI (the other being the target selection
+// function below)
+fn gameUpdateGhostState(ghost: *Ghost) void {
+    var new_state = ghost.state;
+    switch (ghost.state) {
+        .Eyes => {
+            // When in eye state (heading back to the ghost house), check if the
+            // target position in front of the ghost house has been reached, then
+            // switch into ENTERHOUSE state. Since ghosts in eye state move faster
+            // than one pixel per tick, do a fuzzy comparison with the target pos
+            if (nearEqual(ghost.actor.pos, .{ AntePortasX, AntePortasY}, 1)) {
+                new_state = .EnterHouse;
+            }
+        },
+        .EnterHouse => {
+            // Ghosts that enter the ghost house during the gameplay loop immediately
+            // leave the house again after reaching their target position inside the house.
+            if (nearEqual(ghost.actor.pos, Ghost.ghostHouseTargetPos(ghost.type), 1)) {
+                new_state = .LeaveHouse;
+            }
+        },
+        .House => {
+            // Ghosts only remain in the "house state" after a new game round 
+            // has been started. The conditions when ghosts leave the house
+            // are a bit complicated, best to check the Pacman Dossier for the details. 
+            if (state.game.force_leave_house.afterOnce(4*60)) {
+                // if Pacman hasn't eaten dots for 4 seconds, the next ghost
+                // is forced out of the house
+                // FIXME: time is reduced to 3 seconds after round 5
+                new_state = .LeaveHouse;
+                state.game.force_leave_house.start();
+            }
+            else if (state.game.global_dot_counter_active) {
+                // if Pacman has lost a life this round, the global dot counter is used
+                const dot_counter_limit: u32 = switch (ghost.type) {
+                    .Blinky => 0,
+                    .Pinky => 7,
+                    .Inky => 17,
+                    .Clyde => 32,
+                };
+                if (state.game.global_dot_counter == dot_counter_limit) {
+                    new_state = .LeaveHouse;
+                    // NOTE that global dot counter is deactivated if (and only if) Clyde
+                    // is in the house and the dot counter reaches 32
+                    if (ghost.type == .Clyde) {
+                        state.game.global_dot_counter_active = false;
+                    }
+                }
+            }
+            else if (ghost.dot_counter == ghost.dot_limit) {
+                // in the normal case, check the ghost's personal dot counter
+                new_state = .LeaveHouse;
+            }
+        },
+        .LeaveHouse => {
+            // ghosts immediately switch to scatter mode after leaving the ghost house
+            if (ghost.actor.pos[1] == AntePortasY) {
+                new_state = .Scatter;
+            }
+        },
+        else => {
+            // all other states: switch between frightened, scatter and chase states
+            if (ghost.frightened.before(gameLevelSpec(state.game.round).fright_ticks)) {
+                new_state = .Frightened;
+            }
+            else {
+                const t = state.game.round_started.since();
+                if (t < 7*60)       { new_state = .Scatter; }
+                else if (t < 27*60) { new_state = .Chase; }
+                else if (t < 34*60) { new_state = .Scatter; }
+                else if (t < 54*60) { new_state = .Chase; }
+                else if (t < 59*60) { new_state = .Scatter; }
+                else if (t < 79*60) { new_state = .Chase; }
+                else if (t < 84*60) { new_state = .Scatter; }
+                else                { new_state = .Chase; }
+            }
+        }
+    }
+
+    // handle state transitions
+    if (new_state != ghost.state) {
+        switch (ghost.state) {
+            .LeaveHouse => {
+                // after leaving the house, head to the left
+                ghost.next_dir = .Left;
+                ghost.actor.dir = .Left;
+            },
+            .EnterHouse => {
+                // a ghost that was eaten is immune to frighten until Pacman eats another pill
+                ghost.frightened.disable();
+            },
+            .Frightened => {
+                // don't reverse direction when leaving frightened state
+            },
+            .Scatter, .Chase => {
+                // any transition from scatter and chase mode causes a reversal of direction
+                ghost.next_dir = ghost.actor.dir.reverse();
+            },
+            else => {}
+        }
+        ghost.state = new_state;
+    }
+}
+
+// update the ghost's target position, this is the other important function
+// of the ghost's AI
+fn gameUpdateGhostTarget(ghost: *Ghost) void {
+    switch (ghost.state) {
+        .Scatter => {
+            // when in scatter mode, each ghost heads to its own scatter
+            // target position in the playfield corners
+            ghost.target_pos = Ghost.scatterTargetPos(ghost.type);
+        },
+        .Chase => {
+            // when in chase mode, each ghost has its own particular
+            // chase behaviour (see the Pacman Dossier for details)
+            const pm = &state.game.pacman.actor;
+            const pm_pos = pixelToTilePos(pm.pos);
+            const pm_dir = pm.dir.vec();
+            switch (ghost.type) {
+                .Blinky => {
+                    // Blinky directly chases Pacman
+                    ghost.target_pos = pm_pos;
+                },
+                .Pinky => {
+                    // Pinky target is 4 tiles ahead of Pacman
+                    // FIXME: does not reproduce 'diagonal overflow'
+                    ghost.target_pos = pm_pos + pm_dir * ivec2{4,4};
+                },
+                .Inky => {
+                    // Inky targets an extrapolated pos along a line two tiles
+                    // ahead of Pacman through Blinky
+                    const blinky_pos = pixelToTilePos(Ghost.blinky().actor.pos);
+                    const d = (pm_pos + pm_dir * ivec2{2,2}) - blinky_pos;
+                    ghost.target_pos = blinky_pos + d * ivec2{2,2};
+                },
+                .Clyde => {
+                    // if Clyde is far away from Pacman, he chases Pacman, 
+                    // but if close he moves towards the scatter target
+                    if (squaredDistance(pixelToTilePos(ghost.actor.pos), pm_pos) > 64) {
+                        ghost.target_pos = pm_pos;
+                    }
+                    else {
+                        ghost.target_pos = Ghost.scatterTargetPos(.Clyde);
+                    }
+                }
+            }
+        },
+        .Frightened => {
+            // in frightened state just select a random target position
+            // this has the effect that ghosts in frightened state 
+            // move in a random direction at each intersection
+            ghost.target_pos = .{ @intCast(i16, xorshift32() % DisplayTilesX), @intCast(i16, xorshift32() % DisplayTilesY) };
+        },
+        .Eyes => {
+            // move towards the ghost house door
+            ghost.target_pos = .{ 13, 14 };
+        },
+        else => {}
+    }
+}
+
+// compute the next ghost direction, return true if resulting movement
+// should always happen regardless of current ghost position or blocking
+// tiles (this special case is used for movement inside the ghost house)
+fn gameUpdateGhostDir(ghost: *Ghost) bool {
+    switch (ghost.state) {
+        .House => {
+            // inside ghost house, just move up and down
+            if (ghost.actor.pos[1] <= 17*TileHeight) {
+                ghost.next_dir = .Down;
+            }
+            else if (ghost.actor.pos[1] >= 18*TileHeight) {
+                ghost.next_dir = .Up;
+            }
+            ghost.actor.dir = ghost.next_dir;
+            // force movement
+            return true;
+        },
+        .LeaveHouse => {
+            // navigate ghost out of the ghost house
+            const pos = ghost.actor.pos;
+            if (pos[0] == AntePortasX) {
+                if (pos[1] > AntePortasY) {
+                    ghost.next_dir = .Up;
+                }
+            }
+            else {
+                const mid_y: i16 = 17*TileHeight + TileHeight/2;
+                if (pos[1] > mid_y) {
+                    ghost.next_dir = .Up;
+                }
+                else if (pos[1] < mid_y) {
+                    ghost.next_dir = .Down;
+                }
+                else {
+                    ghost.next_dir = if (pos[0] > AntePortasX) .Left else .Right;
+                }
+            }
+            ghost.actor.dir = ghost.next_dir;
+            // force movement
+            return true;
+        },
+        .EnterHouse => {
+            // navigate towards the ghost house target pos
+            const pos = ghost.actor.pos;
+            const tile_pos = pixelToTilePos(pos);
+            const tgt_pos = Ghost.ghostHouseTargetPos(ghost.type);
+            if (tile_pos[1] == 14) {
+                if (pos[0] != AntePortasX) {
+                    ghost.next_dir = if (pos[0] < AntePortasX) .Left else .Right;
+                }
+                else {
+                    ghost.next_dir = .Down;
+                }
+            }
+            else if (pos[1] == tgt_pos[1]) {
+                ghost.next_dir = if (pos[0] < tgt_pos[0]) .Right else .Left;
+            }
+            ghost.actor.dir = ghost.next_dir;
+            // force movement
+            return true;            
+        },
+        else => {
+            // scatter/chase/frightened: just head towards the current target point
+            const dist_to_mid = distToTileMid(ghost.actor.pos);
+            if ((dist_to_mid[0] == 0) and (dist_to_mid[1] == 0)) {
+                // new direction is the previously computed next direction
+                ghost.actor.dir = ghost.next_dir;
+
+                // compute new next-direction
+                const dir_vec = ghost.actor.dir.vec();
+                const lookahead_pos = pixelToTilePos(ghost.actor.pos) + dir_vec;
+
+                // try each direction and take the one that's closest to the target pos
+                const dirs = [_]Dir { .Up, .Left, .Down, .Right };
+                var min_dist: i16 = 32000;
+                for (dirs) |dir| {
+                    // if ghost is in one of the two 'red zones', forbid upward movement
+                    // (see Pacman Dossier "Areas To Exploit")
+                    if (isRedZone(lookahead_pos) and (dir == .Up) and (ghost.state != .Eyes)) {
+                        continue;
+                    }
+                    const test_pos = clampedTilePos(lookahead_pos + dir.vec());
+                    if ((dir.reverse() != ghost.actor.dir) and !isBlockingTile(test_pos)) {
+                        const cur_dist = squaredDistance(test_pos, ghost.target_pos);
+                        if (cur_dist < min_dist) {
+                            min_dist = cur_dist;
+                            ghost.next_dir = dir;
+                        }
+                    }
+                }
+            }
+            // moving with blocking-check
+            return false;
         }
     }
 }
@@ -598,10 +939,36 @@ fn gamePacmanShouldMove() bool {
     }
 }
 
+// return number of pixels a ghost should move this tick, this can't be a simple
+// move/don't move boolean return value, because ghosts in eye state move faster
+// than one pixel per tick
+fn gameGhostSpeed(ghost: *const Ghost) u32 {
+    switch (ghost.state) {
+        .House, .LeaveHouse, .Frightened => {
+            // inside house and when frightened at half speed
+            return state.timing.tick & 1;
+        },
+        .Eyes, .EnterHouse => {
+            // estimated 1.5x when in eye state, Pacman Dossier is silent on this
+            return if (0 != (state.timing.tick & 1)) 1 else 2;
+        },
+        else => {
+            if (isTunnel(pixelToTilePos(ghost.actor.pos))) {
+                // move drastically slower when inside tunnel
+                return if (0 != ((state.timing.tick * 2) % 4)) 1 else 0;
+            }
+            else {
+                // otherwise move just a bit slower than Pacman
+                return if (0 != state.timing.tick % 7) 1 else 0;
+            }
+        }
+    }
+}
+
 // called when a dot or pill has been eaten, checks if a round has been won
 // (all dots and pills eaten), whether to show the bonus fruit, and finally
 // plays the dot-eaten sound effect
-fn gameUpdateDotEaten() void {
+fn gameUpdateDotsEaten() void {
     state.game.num_dots_eaten += 1;
     switch (state.game.num_dots_eaten) {
         NumDots => {
@@ -752,6 +1119,10 @@ fn gameInitPlayfield() void {
         // skip newline
         i += 1;
     }
+
+    // ghost house door color
+    gfxColor(.{13,15}, 0x18);
+    gfxColor(.{14,15}, 0x18);
 }
 
 // initialize a new game round
@@ -966,8 +1337,10 @@ fn gameUpdateSprites() void {
                     assert(false);
                 },
                 .Frightened => {
-                    // FIXME
-                    assert(false);
+                    // when inside the ghost house, show the normal ghost images
+                    // (FIXME: ghost's inside the ghost house also show the
+                    // frightened appearance when Pacman has eaten an energizer pill)
+                    spr.animGhostFrightened(ghost.frightened.since(), gameLevelSpec(state.game.round).fright_ticks - 60);
                 },
                 else => {
                     // show the regular ghost sprite image, the ghost's
@@ -1212,7 +1585,7 @@ const Sprite = struct {
         return &state.gfx.sprites[5];
     }
 
-    // set sprite animation to animated pacman
+    // set sprite image to animated pacman
     fn animPacman(self: *Sprite, dir: Dir, tick: u32) void {
         const tiles = [2][4]u8 {
             [_]u8 { 44, 46, 48, 46 }, // horizontal (needs flipx)
@@ -1226,7 +1599,7 @@ const Sprite = struct {
         self.flipy = (dir == .Up);
     }
 
-    // set sprite anim to animated ghost
+    // set sprite image to animated ghost
     fn animGhost(self: *Sprite, ghost_type: GhostType, dir: Dir, tick: u32) void {
         const tiles = [4][2]u8 {
             [_]u8 { 32, 33 },   // right
@@ -1240,6 +1613,30 @@ const Sprite = struct {
         self.flipx = false;
         self.flipy = false;
     }
+
+    // set sprite image to frightened ghost
+    fn animGhostFrightened(self: *Sprite, tick: u32, blinking_tick: u32) void {
+        const tiles = [2]u8 { 28, 29 };
+        const phase = (tick / 4) & 1;
+        self.tile = tiles[phase];
+        if (tick > blinking_tick) {
+            // towards end of frightened period, start blinking
+            self.color = if (0 != (tick & 0x10)) ColorCodeFrightened else ColorCodeFrightenedBlinking;
+        }
+        else {
+            self.color = ColorCodeFrightened;
+        }
+        self.flipx = false;
+        self.flipy = false;
+    }
+};
+
+// a 'debug marker' for visualizing ghost targets
+const DebugMarker = struct {
+    enabled: bool = false,
+    tile: u8 = 0,
+    color: u8 = 0,
+    tile_pos: ivec2 = ivec2{0,0},
 };
 
 const Gfx = struct {
@@ -1257,6 +1654,7 @@ const Gfx = struct {
 
     // 'hardware sprites' (meh, array default initialization sure looks awkward...)
     sprites: [NumSprites]Sprite = [_]Sprite{.{}} ** NumSprites,
+    debug_markers: [NumDebugMarkers]DebugMarker = [_]DebugMarker{.{}} ** NumDebugMarkers,
 
     // tile- and color-buffer
     tile_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
@@ -1601,7 +1999,11 @@ fn gfxAddSpriteVertices() void {
 }
 
 fn gfxAddDebugMarkerVertices() void {
-    // FIXME
+    for (state.gfx.debug_markers) |*dbg| {
+        if (dbg.enabled) {
+            gfxAddTileVertices(@intCast(u32, dbg.tile_pos[0]), @intCast(u32, dbg.tile_pos[1]), dbg.tile, dbg.color);
+        }
+    }
 }
 
 fn gfxAddFadeVertices() void {
