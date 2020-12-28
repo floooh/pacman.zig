@@ -3,6 +3,7 @@ const sapp = @import("sokol").app;
 const stm = @import("sokol").time;
 const sgapp = @import("sokol").app_gfx_glue;
 const assert = @import("std").debug.assert;
+const math = @import("std").math;
 
 const warn = @import("std").debug.warn;
 
@@ -96,8 +97,105 @@ var state: State = .{};
 //--- helper structs and functions ---------------------------------------------
 const ivec2 = @Vector(2,i16);
 
-fn validTilePos(pos: ivec2) bool {
-    return (pos[0] >= 0) and (pos[0] < DisplayTilesX) and (pos[1] >= 0) and (pos[1] < DisplayTilesY);
+// return the pixel difference from a pixel position to the next tile midpoint
+fn distToTileMid(pixel_pos: ivec2) ivec2 {
+    return .{ TileWidth/2 - @mod(pixel_pos[0], TileWidth), TileHeight/2 - @mod(pixel_pos[1], TileHeight) };
+}
+
+// convert a pixel position into a tile position
+fn pixelToTilePos(pixel_pos: ivec2) ivec2 {
+    return .{ @divTrunc(pixel_pos[0], TileWidth), @divTrunc(pixel_pos[1], TileHeight) };
+}
+
+// return true if a tile position is valid (inside visible area)
+fn validTilePos(tile_pos: ivec2) bool {
+    return (tile_pos[0] >= 0) and (tile_pos[0] < DisplayTilesX) and (tile_pos[1] >= 0) and (tile_pos[1] < DisplayTilesY);
+}
+
+// return tile pos clamped to playfield borders
+fn clampedTilePos(tile_pos: ivec2) ivec2 {
+    return .{
+        math.clamp(tile_pos[0], 0, DisplayTilesX-1),
+        math.clamp(tile_pos[1], 3, DisplayTilesY-3)
+    };
+}
+
+// check if a tile position is blocking (wall or ghost house door)
+fn isBlockingTile(tile_pos: ivec2) bool {
+    return gfxTileAt(tile_pos) >= 0xC0;
+}
+
+// check if a tile position contaisn a dot
+fn isDot(tile_pos: ivec2) bool {
+    return gfxTileAt(tile_pos) == TileCodeDot;
+}
+
+// check if a tile position contains an energizer pill
+fn isPill(tile_pos: ivec2) bool {
+    return gfxTileAt(tile_pos) == TileCodePill;
+}
+
+// check if a tile position is inside the teleport tunnel
+fn isTunnel(tile_pos: ivec2) bool {
+    return (tile_pos[1] == 17) and ((tile_pos[0] <= 5) or (tile_pos[0] >= 22));
+}
+
+// check if a tile position is inside one of the two "red zones" where 
+// ghost are not allowed to move upward
+fn isRedZone(tile_pos: ivec2) bool {
+    return (tile_pos[0] >= 11) and (tile_pos[0] <= 16) and ((tile_pos[1] ==14) or (tile_pos[1] == 26));
+}
+
+// test if movement from a pixel position to a wanted position is possible,
+// allow_cornering is Pacman's feature to take a diagonal shortcut around corners
+fn canMove(pixel_pos: ivec2, wanted_dir: Dir, allow_cornering: bool) bool {
+    const dist_mid = distToTileMid(pixel_pos);
+    const dir_vec = wanted_dir.vec();
+
+    // distance to midpoint in move direction and perpendicular direction
+    const move_dist_mid = if (dir_vec[1] != 0) dist_mid[1] else dist_mid[0];
+    const perp_dist_mid = if (dir_vec[1] != 0) dist_mid[0] else dist_mid[1];
+
+    // look one tile ahead in movement direction
+    const tile_pos = pixelToTilePos(pixel_pos);
+    const check_pos = clampedTilePos(tile_pos + dir_vec);
+    const is_blocked = isBlockingTile(check_pos);
+    if ((!allow_cornering and (0 != perp_dist_mid)) or (is_blocked and (0 == move_dist_mid))) {
+        // way is blocked
+        return false;
+    }
+    else {
+        // way is free
+        return true;
+    }
+}
+
+// compute a new pixel position along a direction (without blocking check)
+fn move(pixel_pos: ivec2, dir: Dir, allow_cornering: bool) ivec2 {
+    const dir_vec = dir.vec();
+    var pos = pixel_pos + dir_vec;
+
+    // if cornering allowed, drag the position towards the center-line
+    if (allow_cornering) {
+        const dist_mid = distToTileMid(pos);
+        if (dir_vec[0] != 0) {
+            if (dist_mid[1] < 0)        { pos[1] -= 1; }
+            else if (dist_mid[1] > 0)   { pos[1] += 1; }
+        }
+        else if (dir_vec[1] != 0) {
+            if (dist_mid[0] < 0)        { pos[0] -= 1; }
+            else if (dist_mid[0] > 0)   { pos[0] += 1; }
+        }
+    }
+
+    // wrap x position around (only possible inside teleport tunnel)
+    if (pos[0] < 0) {
+        pos[0] = DisplayPixelsX - 1;
+    }
+    else if (pos[0] >= DisplayPixelsX) {
+        pos[0] = 0;
+    }
+    return pos;
 }
 
 //--- gameplay system ----------------------------------------------------------
@@ -112,7 +210,7 @@ const Dir = enum(u8) {
     Left,
     Up,
 
-    // return reveres direction
+    // return opposite direction
     fn reverse(self: Dir) Dir {
         return switch (self) {
             .Right => .Left,
@@ -190,8 +288,6 @@ const Fruit = enum {
         };
     }
 };
-
-//--- Game gamestate -----------------------------------------------------------
 
 // gameplay constants
 const NumLives = 3;
@@ -422,9 +518,10 @@ fn gameTick() void {
     }
 
     // update Pacman and ghost state
-    if (0 != state.game.freeze) {
-        // FIXME!
+    if (0 == state.game.freeze) {
+        gameUpdateActors();
     }
+    // update the dynamic background tiles and sprite images
     gameUpdateTiles();
     gameUpdateSprites();
 
@@ -454,6 +551,42 @@ fn gameTick() void {
     }
 
     // FIXME: render debug markers
+}
+
+// the central Pacman- and ghost-behaviour function, called once per game tick
+fn gameUpdateActors() void {
+    // Pacman "AI"
+    if (gamePacmanShouldMove()) {
+        var actor = &state.game.pacman.actor;
+        const wanted_dir = state.input.dir(actor.dir);
+        const allow_cornering = true;
+        // look ahead to check if wanted direction is blocked
+        if (canMove(actor.pos, wanted_dir, allow_cornering)) {
+            actor.dir = wanted_dir;
+        }
+        // move into the selected direction
+        if (canMove(actor.pos, actor.dir, allow_cornering)) {
+            actor.pos = move(actor.pos, actor.dir, allow_cornering);
+            actor.anim_tick += 1;
+        }
+        // FIXME: collision checks
+    }
+}
+
+// Return true if Pacman should move in current game tick. When eating dots,
+// Pacman is slightly slower then ghosts, otherwise slightly faster
+fn gamePacmanShouldMove() bool {
+    if (state.game.dot_eaten.now()) {
+        // eating a dot causes Pacman to stop for 1 tick
+        return false;
+    }
+    else if (state.game.pill_eaten.since() < 3) {
+        // eating an energizer pill causes Pacman to stop for 3 ticks
+        return false;
+    }
+    else {
+        return 0 != (state.timing.tick % 8);
+    }
 }
 
 // common time trigger initialization at start of a game round
@@ -787,7 +920,6 @@ fn gameUpdateSprites() void {
     }
 }
 
-//--- Intro gamestate ----------------------------------------------------------
 const Intro = struct {
     started: Trigger = .{},
 };
@@ -1121,6 +1253,10 @@ fn gfxClearPlayfieldToColor(color_code: u8) void {
             state.gfx.color_ram[y][x] = color_code;
         }
     }
+}
+
+fn gfxTileAt(pos: ivec2) u8 {
+    return state.gfx.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])];
 }
 
 fn gfxTile(pos: ivec2, tile_code: u8) void {
