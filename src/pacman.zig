@@ -193,20 +193,20 @@ const Trigger = struct {
 
 // a 'hardware sprite' struct
 const Sprite = struct {
-    enabled: bool = false,
-    tile: u8 = 0,
-    color: u8 = 0,
-    flipx: bool = false,
-    flipy: bool = false,
-    pos: ivec2 = ivec2{0,0},
+    enabled:    bool = false,
+    tile:       u8 = 0,
+    color:      u8 = 0,
+    flipx:      bool = false,
+    flipy:      bool = false,
+    pos:        ivec2 = ivec2{0,0},
 };
 
 // a 'debug marker' for visualizing ghost targets
 const DebugMarker = struct {
-    enabled: bool = false,
-    tile: u8 = 0,
-    color: u8 = 0,
-    tile_pos: ivec2 = ivec2{0,0},
+    enabled:    bool = false,
+    tile:       u8 = 0,
+    color:      u8 = 0,
+    tile_pos:   ivec2 = ivec2{0,0},
 };
 
 // vertex-structure for rendering background tiles and sprites
@@ -274,7 +274,7 @@ const State = struct {
 
     gfx: struct {
         // fade in/out
-        fadein: Trigger = .{},
+        fadein:  Trigger = .{},
         fadeout: Trigger = .{},
         fade: u8 = 0xFF,
 
@@ -288,18 +288,18 @@ const State = struct {
         // sokol-gfx objects
         pass_action: sg.PassAction = .{},
         offscreen: struct {
-            vbuf: sg.Buffer = .{},
-            tile_img: sg.Image = .{},
-            palette_img: sg.Image = .{},
-            render_target: sg.Image = .{},
-            pip: sg.Pipeline = .{},
-            pass: sg.Pass = .{},
-            bind: sg.Bindings = .{},
+            vbuf:           sg.Buffer = .{},
+            tile_img:       sg.Image = .{},
+            palette_img:    sg.Image = .{},
+            render_target:  sg.Image = .{},
+            pip:            sg.Pipeline = .{},
+            pass:           sg.Pass = .{},
+            bind:           sg.Bindings = .{},
         } = .{},
         display: struct {
-            quad_vbuf: sg.Buffer = .{},
-            pip: sg.Pipeline = .{},
-            bind: sg.Bindings = .{},
+            quad_vbuf:  sg.Buffer = .{},
+            pip:        sg.Pipeline = .{},
+            bind:       sg.Bindings = .{},
         } = .{},
     } = .{},
 };
