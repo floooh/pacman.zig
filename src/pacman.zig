@@ -6,11 +6,11 @@ const assert = @import("std").debug.assert;
 const math   = @import("std").math;
 
 // debugging options
-const DbgSkipIntro = true;         // set to true to skip intro gamestate
+const DbgSkipIntro = false;         // set to true to skip intro gamestate
 const DbgSkipPrelude = false;       // set to true to skip prelude at start of gameloop
 const DbgStartRound = 0;            // set to any starting round <= 255
-const DbgShowMarkers = true;       // set to true to display debug markers
-const DbgEscape = true;            // set to true to end game round with Escape
+const DbgShowMarkers = false;       // set to true to display debug markers
+const DbgEscape = false;            // set to true to end game round with Escape
 const DbgDoubleSpeed = false;       // set to true to speed up game
 const DbgGodMode = false;           // set to true to make Pacman invulnerable
 
@@ -731,6 +731,16 @@ fn spriteImagePacman(dir: Dir, tick: u32) void {
     spr.flipy = (dir == .Up);
 }
 
+// set sprite image to Pacman death sequence
+fn spriteImagePacmanDeath(tick: u32) void {
+    // the death animation tile sequence starts at sprite tile number 52 and ends at 63
+    const tile: u32 = math.clamp(52 + (tick / 8), 0, 63);
+    var spr = spritePacman();
+    spr.tile = @intCast(u8, tile);
+    spr.flipx = false;
+    spr.flipy = false;
+}
+
 // set sprite image to animated ghost
 fn spriteImageGhost(ghost_type: GhostType, dir: Dir, tick: u32) void {
     const tiles = [4][2]u8 {
@@ -947,6 +957,18 @@ fn gameUpdateActors() void {
                     },
                     .Chase, .Scatter => {
                         // ghost eats Pacman
+                        if (!DbgGodMode) {
+                            // FIXME: soundClear()
+                            start(&state.game.pacman_eaten);
+                            state.game.freeze |= FreezeDead;
+                            // if Pacman has any lives left, start a new round, otherwise start the game over sequence
+                            if (state.game.num_lives > 0) {
+                                startAfter(&state.game.ready_started, PacmanEatenTicks + PacmanDeathTicks);
+                            }
+                            else {
+                                startAfter(&state.game.game_over, PacmanEatenTicks + PacmanDeathTicks);
+                            }
+                        }
                     },
                     else => {}
                 }
@@ -1464,7 +1486,7 @@ fn gameRoundInit() void {
         }
         state.game.num_lives -= 1;
     }
-    assert(state.game.num_lives > 0);
+    assert(state.game.num_lives >= 0);
 
     state.game.active_fruit = .None;
     state.game.freeze = FreezeReady;
@@ -1612,8 +1634,7 @@ fn gameUpdateSprites() void {
             else if (0 != (state.game.freeze & (FreezeDead))) {
                 // play the Pacman death animation after a short pause
                 if (after(state.game.pacman_eaten, PacmanEatenTicks)) {
-                    // FIXME!
-                    assert(false);
+                    spriteImagePacmanDeath(since(state.game.pacman_eaten) - PacmanEatenTicks);
                 }
             }
             else {
