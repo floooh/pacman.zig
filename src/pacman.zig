@@ -16,12 +16,24 @@ const DbgEscape = true;            // set to true to end game round with Escape
 const DbgDoubleSpeed = false;       // set to true to speed up game
 const DbgGodMode = false;           // set to true to make Pacman invulnerable
 
-// various constants
+// misc constants
 const TickDurationNS = if (DbgDoubleSpeed) 8_333_33 else 16_666_667;
 const MaxFrameTimeNS = 33_333_333.0;    // max duration of a frame in nanoseconds
 const TickToleranceNS = 1_000_000;      // max time tolerance of a game tick in nanoseconds
 const FadeTicks = 30;                   // fade in/out duration in game ticks
 const NumDebugMarkers = 16;
+const NumLives = 3;
+const NumGhosts = 4;
+const NumDots = 244;
+const NumPills = 4;
+const AntePortasX = 14*TileWidth;   // x/y position of ghost hour entry
+const AntePortasY = 14*TileHeight + TileHeight/2;
+const FruitActiveTicks = 10 * 60;   // number of ticks the bonus fruit is shown
+const GhostEatenFreezeTicks = 60;   // number of ticks the game freezes after Pacman eats a ghost
+const PacmanEatenTicks = 60;        // number of ticks the game freezes after Pacman gets eaten
+const PacmanDeathTicks = 150;       // number of ticks to show the Pacman death sequence before starting a new round
+const GameOverTicks = 3*60;         // number of ticks to show the Game Over message
+const RoundWonTicks = 4*60;         // number of ticks to wait after a round was won
 
 // common tile codes
 const TileCodeSpace      = 0x40;
@@ -79,25 +91,184 @@ const ColorCodeKey           = 0x16;
 const ColorCodeWhiteBorder   = 0x1F;
 const ColorCodeFruitScore    = 0x03;
 
+// flags for Game.freeze
+const FreezePrelude:    u8 = (1<<0);
+const FreezeReady:      u8 = (1<<1);
+const FreezeEatGhost:   u8 = (1<<2);
+const FreezeDead:       u8 = (1<<3);
+const FreezeWon:        u8 = (1<<4);
+
+// a 2D vector for pixel- and tile-coordinates
+const ivec2 = @Vector(2,i16);
+
+// the game can be either in intro- or game-mode
+const GameMode = enum {
+    Intro,
+    Game,
+};
+
+// movement directions
+const Dir = enum(u8) {
+    Right,
+    Down,
+    Left,
+    Up,
+};
+
+// bonus fruit types
+const Fruit = enum {
+    None,
+    Cherries,
+    Strawberry,
+    Peach,
+    Apple,
+    Grapes,
+    Galaxian,
+    Bell,
+    Key,
+};
+
+// the four ghost types
+const GhostType = enum(u8) {
+    Blinky,
+    Pinky,
+    Inky,
+    Clyde,
+};
+
+// the AI state a ghost is currently in
+const GhostState = enum {
+    None,
+    Chase,      // currently chasing Pacman
+    Scatter,    // currently heading towards the corner scatter targets
+    Frightened, // frightened after Pacman has eaten an energizer pill
+    Eyes,       // eaten by Pacman and heading back to the ghost house
+    House,      // currently inside the ghost house
+    LeaveHouse, // currently leaving the ghost house
+    EnterHouse, // currently entering the ghost house
+};
+
+// common ghost and Pacman state
+const Actor = struct {
+    dir:        Dir = .Right,
+    pos:        ivec2 = ivec2{0,0},
+    anim_tick:  u32 = 0,
+};
+
+const Ghost = struct {
+    actor:          Actor = .{},
+    type:           GhostType = .Blinky,
+    next_dir:       Dir = .Right,
+    target_pos:     ivec2 = ivec2{0,0},
+    state:          GhostState = .None,
+    frightened:     Trigger = .{},
+    eaten:          Trigger = .{},
+    dot_counter:    u16 = 0,
+    dot_limit:      u16 = 0,
+};
+
+// Pacman state
+const Pacman = struct {
+    actor: Actor = .{},
+};
+
+// a time trigger holds a tick at which to start an action
+const Trigger = struct {
+    const DisabledTicks = 0xFF_FF_FF_FF;
+    tick: u32 = DisabledTicks,
+};
+
 // all mutable state is in a single nested global
 const State = struct {
+    game_mode: GameMode = .Intro,
+    
     timing: struct {
-        tick: u32 = 0,
+        tick:          u32 = 0,
         laptime_store: u64 = 0,
-        tick_accum: i32 = 0,
+        tick_accum:    i32 = 0,
     } = .{},
-    gamestate: GameState = undefined,
-    input: Input = .{},
-    intro: Intro = .{},
-    game: Game = .{},
+
+    input:  struct {
+        enabled: bool = false,
+        up:      bool = false,
+        down:    bool = false,
+        left:    bool = false,
+        right:   bool = false,
+        esc:     bool = false,
+        anykey:  bool = false,
+    } = .{},
+
+    intro: struct {
+        started: Trigger = .{},
+    } = .{},
+    
+    game: struct {
+        pacman: Pacman = .{},
+        ghosts: [NumGhosts]Ghost = [_]Ghost{.{}} ** NumGhosts,
+
+        xorshift:           u32 = 0x12345678,   // xorshift random-number-generator state
+        score:              u32 = 0,
+        hiscore:            u32 = 0,
+        num_lives:          u8 = 0,
+        round:              u8 = 0,
+        freeze:             u8 = 0,             // combination of Freeze* flags
+        num_dots_eaten:     u8 = 0,
+        num_ghosts_eaten:   u8 = 0,
+        active_fruit:       Fruit = .None,
+        
+        global_dot_counter_active: bool = false,
+        global_dot_counter: u16 = 0,
+
+        started:            Trigger = .{},
+        prelude_started:    Trigger = .{},
+        ready_started:      Trigger = .{},
+        round_started:      Trigger = .{},
+        round_won:          Trigger = .{},
+        game_over:          Trigger = .{},
+        dot_eaten:          Trigger = .{},
+        pill_eaten:         Trigger = .{},
+        ghost_eaten:        Trigger = .{},
+        pacman_eaten:       Trigger = .{},
+        fruit_eaten:        Trigger = .{},
+        force_leave_house:  Trigger = .{},
+        fruit_active:       Trigger = .{},
+    } = .{},
     gfx: Gfx = .{},
 };
 var state: State = .{};
 
-//--- helper structs and functions ---------------------------------------------
+// level specifications
+const LevelSpec = struct {
+    bonus_fruit: Fruit,
+    bonus_score: u32,
+    fright_ticks: u32,
+};
+const MaxLevelSpec = 21;
+const LevelSpecTable = [MaxLevelSpec]LevelSpec {
+    .{ .bonus_fruit=.Cherries,   .bonus_score=10,  .fright_ticks=6*60 },
+    .{ .bonus_fruit=.Strawberry, .bonus_score=30,  .fright_ticks=5*60, },
+    .{ .bonus_fruit=.Peach,      .bonus_score=50,  .fright_ticks=4*60, },
+    .{ .bonus_fruit=.Peach,      .bonus_score=50,  .fright_ticks=3*60, },
+    .{ .bonus_fruit=.Apple,      .bonus_score=70,  .fright_ticks=2*60, },
+    .{ .bonus_fruit=.Apple,      .bonus_score=70,  .fright_ticks=5*60, },
+    .{ .bonus_fruit=.Grapes,     .bonus_score=100, .fright_ticks=2*60, },
+    .{ .bonus_fruit=.Grapes,     .bonus_score=100, .fright_ticks=2*60, },
+    .{ .bonus_fruit=.Galaxian,   .bonus_score=200, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Galaxian,   .bonus_score=200, .fright_ticks=5*60, },
+    .{ .bonus_fruit=.Bell,       .bonus_score=300, .fright_ticks=2*60, },
+    .{ .bonus_fruit=.Bell,       .bonus_score=300, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=3*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
+    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
+};
 
-// FIXME: hmm is it possible to add methods to ivec2 here?
-const ivec2 = @Vector(2,i16);
+//--- helper structs and functions ---------------------------------------------
 
 // a xorshift random number generator
 fn xorshift32() u32 {
@@ -149,6 +320,217 @@ fn clampedTilePos(tile_pos: ivec2) ivec2 {
     };
 }
 
+// set time trigger to next tick
+fn start(t: *Trigger) void {
+    t.tick = state.timing.tick + 1;
+}
+
+// set time trigger to a future tick
+fn startAfter(t: *Trigger, ticks: u32) void {
+    t.tick = state.timing.tick + ticks;
+}
+
+// disable a trigger
+fn disable(t: *Trigger) void {
+    t.tick = Trigger.DisabledTicks;
+}
+
+// check if trigger is triggered in current game tick
+fn now(t: Trigger) bool {
+    return t.tick == state.timing.tick;
+}
+
+// return number of ticks since a time trigger was triggered
+fn since(t: Trigger) u32 {
+    if (state.timing.tick >= t.tick) {
+        return state.timing.tick - t.tick;
+    }
+    else {
+        return Trigger.DisabledTicks;
+    }
+}
+
+// check if a time trigger is between begin and end tick
+fn between(t: Trigger, begin: u32, end: u32) bool {
+    assert(begin < end);
+    if (t.tick != Trigger.DisabledTicks) {
+        const ticks = since(t);
+        return (ticks >= begin) and (ticks < end);
+    }
+    else {
+        return false;
+    }
+}
+
+// check if a time trigger was triggered exactly N ticks ago
+fn afterOnce(t: Trigger, ticks: u32) bool {
+    return since(t) == ticks;
+}
+
+// check if a time trigger was triggered more than N ticks ago
+fn after(t: Trigger, ticks: u32) bool {
+    const s = since(t);
+    if (s != Trigger.DisabledTicks) {
+        return s >= ticks;
+    }
+    else {
+        return false;
+    }
+}
+
+// same as between(t, 0, ticks)
+fn before(t: Trigger, ticks: u32) bool {
+    const s = since(t);
+    if (s != Trigger.DisabledTicks) {
+        return s < ticks;
+    }
+    else {
+        return false;
+    }
+}
+
+// enable/disable input 
+fn inputEnable() void {
+    state.input.enabled = true;
+}
+
+fn inputDisable() void {
+    state.input = .{};
+}
+
+// get current input state as movement direction
+fn inputDir(default_dir: Dir) Dir {
+    if (state.input.enabled) {
+        if (state.input.up)         { return .Up; }
+        else if (state.input.down)  { return .Down; }
+        else if (state.input.left)  { return .Left; }
+        else if (state.input.right) { return .Right; }
+    }
+    return default_dir;
+}
+
+// return opposite direction
+fn reverseDir(dir: Dir) Dir {
+    return switch (dir) {
+        .Right => .Left,
+        .Down  => .Up,
+        .Left  => .Right,
+        .Up    => .Down,
+    };
+}
+
+// return a vector for a given direction
+fn dirToVec(dir: Dir) ivec2 {
+    return switch (dir) {
+        .Right => .{  1,  0 },
+        .Down  => .{  0,  1 },
+        .Left  => .{ -1,  0 },
+        .Up    => .{  0, -1 }
+    };
+}
+
+// return the tile code for a fruit
+fn fruitTileCode(fruit: Fruit) u8 {
+    return switch (fruit) {
+        .None       => TileCodeSpace,
+        .Cherries   => TileCodeCherries,
+        .Strawberry => TileCodeStrawberry,
+        .Peach      => TileCodePeach,
+        .Apple      => TileCodeApple,
+        .Grapes     => TileCodeGrapes,
+        .Galaxian   => TileCodeGalaxian,
+        .Bell       => TileCodeBell,
+        .Key        => TileCodeKey,
+    };
+}
+
+// return the color code for a fruit
+fn fruitColorCode(fruit: Fruit) u8 {
+    return switch (fruit) {
+        .None       => ColorCodeBlank,
+        .Cherries   => ColorCodeCherries,
+        .Strawberry => ColorCodeStrawberry,
+        .Peach      => ColorCodePeach,
+        .Apple      => ColorCodeApple,
+        .Grapes     => ColorCodeGrapes,
+        .Galaxian   => ColorCodeGalaxian,
+        .Bell       => ColorCodeBell,
+        .Key        => ColorCodeKey,
+    };
+}
+
+// return the sprite tile code for a fruit
+fn fruitSpriteCode(fruit: Fruit) u8 {
+    return switch (fruit) {
+        .None       => SpriteCodeInvisible,
+        .Cherries   => SpriteCodeCherries,
+        .Strawberry => SpriteCodeStrawberry,
+        .Peach      => SpriteCodePeach,
+        .Apple      => SpriteCodeApple,
+        .Grapes     => SpriteCodeGrapes,
+        .Galaxian   => SpriteCodeGalaxian,
+        .Bell       => SpriteCodeBell,
+        .Key        => SpriteCodeKey,
+    };
+}
+
+// convert an actor pos (origin at center) to a sprite pos (origin at topleft)
+fn actorToSpritePos(actorPos: ivec2) ivec2 {
+    return .{ actorPos[0] - SpriteWidth/2, actorPos[1] - SpriteHeight/2 };
+}
+
+// get pointer to ghost by type
+fn ghostPtr(t: GhostType) *Ghost {
+    return &state.game.ghosts[@enumToInt(t)];
+}
+
+// shortcut: get pointers to ghosts by name
+fn blinky() *Ghost {
+    return ghostPtr(.Blinky);
+}
+
+fn pinky() *Ghost {
+    return ghostPtr(.Pinky);
+}
+
+fn inky() *Ghost {
+    return ghostPtr(.Inky);
+}
+
+fn clyde() *Ghost {
+    return ghostPtr(.Clyde);
+}
+
+// target position (pixels) when heading back to ghost house
+// (same as startingPos except Blinky's)
+fn ghostHouseTargetPos(t: GhostType) ivec2 {
+    return switch (t) {
+        .Blinky => .{ 14*8, 17*8 + 4 },
+        .Pinky  => .{ 14*8, 17*8 + 4 },
+        .Inky   => .{ 12*8, 17*8 + 4 },
+        .Clyde  => .{ 16*8, 17*8 + 4 },
+    };
+}
+
+// ghost scatter target positions in tile coords
+fn scatterTargetPos(t: GhostType) ivec2 {
+    return switch (t) {
+        .Blinky => .{ 25,  0 }, 
+        .Pinky  => .{  2,  0 },
+        .Inky   => .{ 27, 34 }, 
+        .Clyde  => .{  0, 34 },
+    };
+}
+
+// get level spec for the current game round
+fn levelSpec(round: u32) LevelSpec {
+    var i = round;
+    if (i >= MaxLevelSpec) {
+        i = MaxLevelSpec - 1;
+    }
+    return LevelSpecTable[i];
+}
+
 // check if a tile position is blocking (wall or ghost house door)
 fn isBlockingTile(tile_pos: ivec2) bool {
     return gfxTileAt(tile_pos) >= 0xC0;
@@ -179,7 +561,7 @@ fn isRedZone(tile_pos: ivec2) bool {
 // allow_cornering is Pacman's feature to take a diagonal shortcut around corners
 fn canMove(pixel_pos: ivec2, wanted_dir: Dir, allow_cornering: bool) bool {
     const dist_mid = distToTileMid(pixel_pos);
-    const dir_vec = wanted_dir.vec();
+    const dir_vec = dirToVec(wanted_dir);
 
     // distance to midpoint in move direction and perpendicular direction
     const move_dist_mid = if (dir_vec[1] != 0) dist_mid[1] else dist_mid[0];
@@ -201,7 +583,7 @@ fn canMove(pixel_pos: ivec2, wanted_dir: Dir, allow_cornering: bool) bool {
 
 // compute a new pixel position along a direction (without blocking check)
 fn move(pixel_pos: ivec2, dir: Dir, allow_cornering: bool) ivec2 {
-    const dir_vec = dir.vec();
+    const dir_vec = dirToVec(dir);
     var pos = pixel_pos + dir_vec;
 
     // if cornering allowed, drag the position towards the center-line
@@ -228,293 +610,28 @@ fn move(pixel_pos: ivec2, dir: Dir, allow_cornering: bool) ivec2 {
 }
 
 //--- gameplay system ----------------------------------------------------------
-const GameState = enum {
-    Intro,
-    Game,
-};
-
-const Dir = enum(u8) {
-    Right,
-    Down,
-    Left,
-    Up,
-
-    // return opposite direction
-    fn reverse(self: Dir) Dir {
-        return switch (self) {
-            .Right => .Left,
-            .Down  => .Up,
-            .Left  => .Right,
-            .Up    => .Down,
-        };
-    }
-
-    // return a vector for a given direction
-    fn vec(dir: Dir) ivec2 {
-        return switch (dir) {
-            .Right => .{ 1, 0 },
-            .Down  => .{ 0, 1 },
-            .Left  => .{ -1, 0 },
-            .Up    => .{ 0, -1 }
-        };
-    }
-};
-
-// bonus fruit types
-const Fruit = enum {
-    None,
-    Cherries,
-    Strawberry,
-    Peach,
-    Apple,
-    Grapes,
-    Galaxian,
-    Bell,
-    Key,
-
-    // as background tile code...
-    fn tile(fruit: Fruit) u8 {
-        return switch (fruit) {
-            .None       => TileCodeSpace,
-            .Cherries   => TileCodeCherries,
-            .Strawberry => TileCodeStrawberry,
-            .Peach      => TileCodePeach,
-            .Apple      => TileCodeApple,
-            .Grapes     => TileCodeGrapes,
-            .Galaxian   => TileCodeGalaxian,
-            .Bell       => TileCodeBell,
-            .Key        => TileCodeKey,
-        };
-    }
-
-    // as color code...
-    fn color(fruit: Fruit) u8 {
-        return switch (fruit) {
-            .None       => ColorCodeBlank,
-            .Cherries   => ColorCodeCherries,
-            .Strawberry => ColorCodeStrawberry,
-            .Peach      => ColorCodePeach,
-            .Apple      => ColorCodeApple,
-            .Grapes     => ColorCodeGrapes,
-            .Galaxian   => ColorCodeGalaxian,
-            .Bell       => ColorCodeBell,
-            .Key        => ColorCodeKey,
-        };
-    }
-
-    // as sprite tile code
-    fn sprite(fruit: Fruit) u8 {
-        return switch (fruit) {
-            .None       => SpriteCodeInvisible,
-            .Cherries   => SpriteCodeCherries,
-            .Strawberry => SpriteCodeStrawberry,
-            .Peach      => SpriteCodePeach,
-            .Apple      => SpriteCodeApple,
-            .Grapes     => SpriteCodeGrapes,
-            .Galaxian   => SpriteCodeGalaxian,
-            .Bell       => SpriteCodeBell,
-            .Key        => SpriteCodeKey,
-        };
-    }
-};
-
-// gameplay constants
-const NumLives = 3;
-const NumGhosts = 4;
-const NumDots = 244;
-const NumPills = 4;
-const AntePortasX = 14*TileWidth;   // x/y position of ghost hour entry
-const AntePortasY = 14*TileHeight + TileHeight/2;
-const FruitActiveTicks = 10 * 60;   // number of ticks the bonus fruit is shown
-const GhostEatenFreezeTicks = 60;   // number of ticks the game freezes after Pacman eats a ghost
-const PacmanEatenTicks = 60;        // number of ticks the game freezes after Pacman gets eaten
-const PacmanDeathTicks = 150;       // number of ticks to show the Pacman death sequence before starting a new round
-const GameOverTicks = 3*60;         // number of ticks to show the Game Over message
-const RoundWonTicks = 4*60;         // number of ticks to wait after a round was won
-
-// flags for Game.freeze
-const FreezePrelude:    u8 = (1<<0);
-const FreezeReady:      u8 = (1<<1);
-const FreezeEatGhost:   u8 = (1<<2);
-const FreezeDead:       u8 = (1<<3);
-const FreezeWon:        u8 = (1<<4);
-
-// common ghost and Pacman state
-const Actor = struct {
-    dir:        Dir = .Right,
-    pos:        ivec2 = ivec2{0,0},
-    anim_tick:  u32 = 0,
-
-    // convert the actor's position to a sprite position (midpoint at center to topleft)
-    fn sprite_pos(self:*const Actor) ivec2 {
-        return .{ self.pos[0] - SpriteWidth/2, self.pos[1] - SpriteHeight/2 };
-    }
-};
-
-const GhostType = enum(u8) {
-    Blinky,
-    Pinky,
-    Inky,
-    Clyde,
-};
-const GhostState = enum {
-    None,
-    Chase,      // currently chasing Pacman
-    Scatter,    // currently heading towards the corner scatter targets
-    Frightened, // frightened after Pacman has eaten an energizer pill
-    Eyes,       // eaten by Pacman and heading back to the ghost house
-    House,      // currently inside the ghost house
-    LeaveHouse, // currently leaving the ghost house
-    EnterHouse, // currently entering the ghost house
-};
-
-const Ghost = struct {
-    actor:          Actor = .{},
-    type:           GhostType = .Blinky,
-    next_dir:       Dir = .Right,
-    target_pos:     ivec2 = ivec2{0,0},
-    state:          GhostState = .None,
-    frightened:     Trigger = .{},
-    eaten:          Trigger = .{},
-    dot_counter:    u16 = 0,
-    dot_limit:      u16 = 0,
-    
-    // shortcut to get pointer to ghost by type
-    fn ptr(ghost_type: GhostType) *Ghost {
-        return &state.game.ghosts[@enumToInt(ghost_type)];
-    }
-    fn blinky() *Ghost {
-        return ptr(.Blinky);
-    }
-    fn pinky() *Ghost {
-        return ptr(.Pinky);
-    }
-    fn inky() *Ghost {
-        return ptr(.Inky);
-    }
-    fn clyde() *Ghost {
-        return ptr(.Clyde);
-    }
-    // target position (pixels) when heading back to ghost house
-    // (same as startingPos except Blinky's)
-    fn ghostHouseTargetPos(ghost_type: GhostType) ivec2 {
-        return switch (ghost_type) {
-            .Blinky => .{ 14*8, 17*8 + 4 },
-            .Pinky  => .{ 14*8, 17*8 + 4 },
-            .Inky   => .{ 12*8, 17*8 + 4 },
-            .Clyde  => .{ 16*8, 17*8 + 4 },
-        };
-    }
-    // ghost scatter target positions in tiles
-    fn scatterTargetPos(ghost_type: GhostType) ivec2 {
-        return switch (ghost_type) {
-            .Blinky => .{ 25,  0 }, 
-            .Pinky  => .{  2,  0 },
-            .Inky   => .{ 27, 34 }, 
-            .Clyde  => .{  0, 34 },
-        };
-    }
-};
-
-// Pacman state
-const Pacman = struct {
-    actor: Actor = .{},
-};
-
-const Game = struct {
-
-    pacman: Pacman = .{},
-    ghosts: [NumGhosts]Ghost = [_]Ghost{.{}} ** NumGhosts,
-
-    xorshift:           u32 = 0x12345678,   // xorshift random-number-generator state
-    score:              u32 = 0,
-    hiscore:            u32 = 0,
-    num_lives:          u8 = 0,
-    round:              u8 = 0,
-    freeze:             u8 = 0,             // combination of Freeze* flags
-    num_dots_eaten:     u8 = 0,
-    num_ghosts_eaten:   u8 = 0,
-    active_fruit:       Fruit = .None,
-    
-    global_dot_counter_active: bool = false,
-    global_dot_counter: u16 = 0,
-
-    started:            Trigger = .{},
-    prelude_started:    Trigger = .{},
-    ready_started:      Trigger = .{},
-    round_started:      Trigger = .{},
-    round_won:          Trigger = .{},
-    game_over:          Trigger = .{},
-    dot_eaten:          Trigger = .{},
-    pill_eaten:         Trigger = .{},
-    ghost_eaten:        Trigger = .{},
-    pacman_eaten:       Trigger = .{},
-    fruit_eaten:        Trigger = .{},
-    force_leave_house:  Trigger = .{},
-    fruit_active:       Trigger = .{},
-};
-
-// level specifications
-const LevelSpec = struct {
-    bonus_fruit: Fruit,
-    bonus_score: u32,
-    fright_ticks: u32,
-};
-const MaxLevelSpec = 21;
-const LevelSpecTable = [MaxLevelSpec]LevelSpec {
-    .{ .bonus_fruit=.Cherries,   .bonus_score = 10, .fright_ticks = 6*60 },
-    .{ .bonus_fruit=.Strawberry, .bonus_score=30,  .fright_ticks=5*60, },
-    .{ .bonus_fruit=.Peach,      .bonus_score=50,  .fright_ticks=4*60, },
-    .{ .bonus_fruit=.Peach,      .bonus_score=50,  .fright_ticks=3*60, },
-    .{ .bonus_fruit=.Apple,      .bonus_score=70,  .fright_ticks=2*60, },
-    .{ .bonus_fruit=.Apple,      .bonus_score=70,  .fright_ticks=5*60, },
-    .{ .bonus_fruit=.Grapes,     .bonus_score=100, .fright_ticks=2*60, },
-    .{ .bonus_fruit=.Grapes,     .bonus_score=100, .fright_ticks=2*60, },
-    .{ .bonus_fruit=.Galaxian,   .bonus_score=200, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Galaxian,   .bonus_score=200, .fright_ticks=5*60, },
-    .{ .bonus_fruit=.Bell,       .bonus_score=300, .fright_ticks=2*60, },
-    .{ .bonus_fruit=.Bell,       .bonus_score=300, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=3*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
-};
-
-// get level spec for the current game round
-fn gameLevelSpec(round: u32) LevelSpec {
-    var i = round;
-    if (i >= MaxLevelSpec) {
-        i = MaxLevelSpec - 1;
-    }
-    return LevelSpecTable[i];
-}
 
 // the central game tick function, called at 60Hz
 fn gameTick() void {
 
     // initialize game-state once
-    if (state.game.started.now()) {
+    if (now(state.game.started)) {
         // debug: skip predule
         const prelude_ticks_per_sec = if (DbgSkipPrelude) 1 else 60;
-        state.gfx.fadein.start();
-        state.game.prelude_started.start();
-        state.game.ready_started.startAfter(2*prelude_ticks_per_sec);
+        start(&state.gfx.fadein);
+        start(&state.game.prelude_started);
+        startAfter(&state.game.ready_started, 2*prelude_ticks_per_sec);
         // FIXME: start prelude sound
         gameInit();
     }
 
     // initialize new round (after eating all dots or losing a life)
-    if (state.game.ready_started.now()) {
+    if (now(state.game.ready_started)) {
         gameRoundInit();
         // after 2 seconds, start the interactive game loop
-        state.game.round_started.startAfter(2*60 + 10);
+        startAfter(&state.game.round_started, 2*60 + 10);
     }
-    if (state.game.round_started.now()) {
+    if (now(state.game.round_started)) {
         state.game.freeze &= ~FreezeReady;
         // clear the READY! message
         gfxColorText(.{11,20}, ColorCodeDot, "      ");
@@ -522,27 +639,27 @@ fn gameTick() void {
     }
 
     // activate/deactivate bonus fruit
-    if (state.game.fruit_active.now()) {
-        state.game.active_fruit = gameLevelSpec(state.game.round).bonus_fruit;
+    if (now(state.game.fruit_active)) {
+        state.game.active_fruit = levelSpec(state.game.round).bonus_fruit;
     }
-    else if (state.game.fruit_active.afterOnce(FruitActiveTicks)) {
+    else if (afterOnce(state.game.fruit_active, FruitActiveTicks)) {
         state.game.active_fruit = .None;
     }
 
     // stop frightened sound and start weeooh sound
-    if (state.game.pill_eaten.afterOnce(gameLevelSpec(state.game.round).fright_ticks)) {
+    if (afterOnce(state.game.pill_eaten, levelSpec(state.game.round).fright_ticks)) {
         // FIXME: start weeooh sound
     }
 
     // if game is frozen because Pacman ate a ghost, unfreeze after a while
     if (0 != (state.game.freeze & FreezeEatGhost)) {
-        if (state.game.ghost_eaten.afterOnce(GhostEatenFreezeTicks)) {
+        if (afterOnce(state.game.ghost_eaten, GhostEatenFreezeTicks)) {
             state.game.freeze &= ~FreezeEatGhost;
         }
     }
 
     // play pacman-death sound
-    if (state.game.pacman_eaten.afterOnce(PacmanEatenTicks)) {
+    if (afterOnce(state.game.pacman_eaten, PacmanEatenTicks)) {
         // FIXME: play sound
     }
 
@@ -560,22 +677,22 @@ fn gameTick() void {
     }
 
     // check for end-round condition
-    if (state.game.round_won.now()) {
+    if (now(state.game.round_won)) {
         state.game.freeze |= FreezeWon;
-        state.game.ready_started.startAfter(RoundWonTicks);
+        startAfter(&state.game.ready_started, RoundWonTicks);
     }
-    if (state.game.game_over.now()) {
+    if (now(state.game.game_over)) {
         gfxColorText(.{9,20}, 1, "GAME  OVER");
-        state.input.disable();
-        state.gfx.fadeout.startAfter(GameOverTicks);
-        state.intro.started.startAfter(GameOverTicks + FadeTicks);
+        inputDisable();
+        startAfter(&state.gfx.fadeout, GameOverTicks);
+        startAfter(&state.intro.started, GameOverTicks + FadeTicks);
     }
 
     if (DbgEscape) {
         if (state.input.esc) {
-            state.input.disable();
-            state.gfx.fadeout.start();
-            state.intro.started.startAfter(FadeTicks);
+            inputDisable();
+            start(&state.gfx.fadeout);
+            startAfter(&state.intro.started, FadeTicks);
         }
     }
 
@@ -607,7 +724,7 @@ fn gameUpdateActors() void {
     // Pacman "AI"
     if (gamePacmanShouldMove()) {
         var actor = &state.game.pacman.actor;
-        const wanted_dir = state.input.dir(actor.dir);
+        const wanted_dir = inputDir(actor.dir);
         const allow_cornering = true;
         // look ahead to check if wanted direction is blocked
         if (canMove(actor.pos, wanted_dir, allow_cornering)) {
@@ -623,18 +740,18 @@ fn gameUpdateActors() void {
         if (isDot(tile_pos)) {
             gfxTile(tile_pos, TileCodeSpace);
             state.game.score += 1;
-            state.game.dot_eaten.start();
-            state.game.force_leave_house.start();
+            start(&state.game.dot_eaten);
+            start(&state.game.force_leave_house);
             gameUpdateDotsEaten();
             gameUpdateGhostHouseDotCounters();
         }
         if (isPill(tile_pos)) {
             gfxTile(tile_pos, TileCodeSpace);
             state.game.score += 5;
-            state.game.pill_eaten.start();
+            start(&state.game.pill_eaten);
             state.game.num_ghosts_eaten = 0;
             for (state.game.ghosts) |*ghost| {
-                ghost.frightened.start();
+                start(&ghost.frightened);
             }
             gameUpdateDotsEaten();
             // FIXME: start frightened sound
@@ -681,7 +798,7 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
         .EnterHouse => {
             // Ghosts that enter the ghost house during the gameplay loop immediately
             // leave the house again after reaching their target position inside the house.
-            if (nearEqual(ghost.actor.pos, Ghost.ghostHouseTargetPos(ghost.type), 1)) {
+            if (nearEqual(ghost.actor.pos, ghostHouseTargetPos(ghost.type), 1)) {
                 new_state = .LeaveHouse;
             }
         },
@@ -689,12 +806,12 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
             // Ghosts only remain in the "house state" after a new game round 
             // has been started. The conditions when ghosts leave the house
             // are a bit complicated, best to check the Pacman Dossier for the details. 
-            if (state.game.force_leave_house.afterOnce(4*60)) {
+            if (afterOnce(state.game.force_leave_house, 4*60)) {
                 // if Pacman hasn't eaten dots for 4 seconds, the next ghost
                 // is forced out of the house
                 // FIXME: time is reduced to 3 seconds after round 5
                 new_state = .LeaveHouse;
-                state.game.force_leave_house.start();
+                start(&state.game.force_leave_house);
             }
             else if (state.game.global_dot_counter_active) {
                 // if Pacman has lost a life this round, the global dot counter is used
@@ -726,11 +843,11 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
         },
         else => {
             // all other states: switch between frightened, scatter and chase states
-            if (ghost.frightened.before(gameLevelSpec(state.game.round).fright_ticks)) {
+            if (before(ghost.frightened, levelSpec(state.game.round).fright_ticks)) {
                 new_state = .Frightened;
             }
             else {
-                const t = state.game.round_started.since();
+                const t = since(state.game.round_started);
                 if (t < 7*60)       { new_state = .Scatter; }
                 else if (t < 27*60) { new_state = .Chase; }
                 else if (t < 34*60) { new_state = .Scatter; }
@@ -753,14 +870,14 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
             },
             .EnterHouse => {
                 // a ghost that was eaten is immune to frighten until Pacman eats another pill
-                ghost.frightened.disable();
+                disable(&ghost.frightened);
             },
             .Frightened => {
                 // don't reverse direction when leaving frightened state
             },
             .Scatter, .Chase => {
                 // any transition from scatter and chase mode causes a reversal of direction
-                ghost.next_dir = ghost.actor.dir.reverse();
+                ghost.next_dir = reverseDir(ghost.actor.dir);
             },
             else => {}
         }
@@ -775,14 +892,14 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
         .Scatter => {
             // when in scatter mode, each ghost heads to its own scatter
             // target position in the playfield corners
-            ghost.target_pos = Ghost.scatterTargetPos(ghost.type);
+            ghost.target_pos = scatterTargetPos(ghost.type);
         },
         .Chase => {
             // when in chase mode, each ghost has its own particular
             // chase behaviour (see the Pacman Dossier for details)
             const pm = &state.game.pacman.actor;
             const pm_pos = pixelToTilePos(pm.pos);
-            const pm_dir = pm.dir.vec();
+            const pm_dir = dirToVec(pm.dir);
             switch (ghost.type) {
                 .Blinky => {
                     // Blinky directly chases Pacman
@@ -796,7 +913,7 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
                 .Inky => {
                     // Inky targets an extrapolated pos along a line two tiles
                     // ahead of Pacman through Blinky
-                    const blinky_pos = pixelToTilePos(Ghost.blinky().actor.pos);
+                    const blinky_pos = pixelToTilePos(blinky().actor.pos);
                     const d = (pm_pos + pm_dir * ivec2{2,2}) - blinky_pos;
                     ghost.target_pos = blinky_pos + d * ivec2{2,2};
                 },
@@ -807,7 +924,7 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
                         ghost.target_pos = pm_pos;
                     }
                     else {
-                        ghost.target_pos = Ghost.scatterTargetPos(.Clyde);
+                        ghost.target_pos = scatterTargetPos(.Clyde);
                     }
                 }
             }
@@ -871,7 +988,7 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
             // navigate towards the ghost house target pos
             const pos = ghost.actor.pos;
             const tile_pos = pixelToTilePos(pos);
-            const tgt_pos = Ghost.ghostHouseTargetPos(ghost.type);
+            const tgt_pos = ghostHouseTargetPos(ghost.type);
             if (tile_pos[1] == 14) {
                 if (pos[0] != AntePortasX) {
                     ghost.next_dir = if (pos[0] < AntePortasX) .Left else .Right;
@@ -895,7 +1012,7 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
                 ghost.actor.dir = ghost.next_dir;
 
                 // compute new next-direction
-                const dir_vec = ghost.actor.dir.vec();
+                const dir_vec = dirToVec(ghost.actor.dir);
                 const lookahead_pos = pixelToTilePos(ghost.actor.pos) + dir_vec;
 
                 // try each direction and take the one that's closest to the target pos
@@ -907,8 +1024,8 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
                     if (isRedZone(lookahead_pos) and (dir == .Up) and (ghost.state != .Eyes)) {
                         continue;
                     }
-                    const test_pos = clampedTilePos(lookahead_pos + dir.vec());
-                    if ((dir.reverse() != ghost.actor.dir) and !isBlockingTile(test_pos)) {
+                    const test_pos = clampedTilePos(lookahead_pos + dirToVec(dir));
+                    if ((reverseDir(dir) != ghost.actor.dir) and !isBlockingTile(test_pos)) {
                         const cur_dist = squaredDistance(test_pos, ghost.target_pos);
                         if (cur_dist < min_dist) {
                             min_dist = cur_dist;
@@ -926,11 +1043,11 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
 // Return true if Pacman should move in current game tick. When eating dots,
 // Pacman is slightly slower then ghosts, otherwise slightly faster
 fn gamePacmanShouldMove() bool {
-    if (state.game.dot_eaten.now()) {
+    if (now(state.game.dot_eaten)) {
         // eating a dot causes Pacman to stop for 1 tick
         return false;
     }
-    else if (state.game.pill_eaten.since() < 3) {
+    else if (since(state.game.pill_eaten) < 3) {
         // eating an energizer pill causes Pacman to stop for 3 ticks
         return false;
     }
@@ -973,13 +1090,13 @@ fn gameUpdateDotsEaten() void {
     switch (state.game.num_dots_eaten) {
         NumDots => {
             // all dots eaten, round won
-            state.game.round_won.start();
+            start(&state.game.round_won);
             // FIXME
             // soundClear();
         },
         70, 170 => {
             // at 70 and 170 dots, show the bonus fruit
-            state.game.fruit_active.start();
+            start(&state.game.fruit_active);
         },
         else => {}
     }
@@ -1032,20 +1149,20 @@ fn gameUpdateGhostHouseDotCounters() void {
 
 // common time trigger initialization at start of a game round
 fn gameInitTriggers() void {
-    state.game.round_won.disable();
-    state.game.game_over.disable();
-    state.game.dot_eaten.disable();
-    state.game.pill_eaten.disable();
-    state.game.ghost_eaten.disable();
-    state.game.pacman_eaten.disable();
-    state.game.fruit_eaten.disable();
-    state.game.force_leave_house.disable();
-    state.game.fruit_active.disable();
+    disable(&state.game.round_won);
+    disable(&state.game.game_over);
+    disable(&state.game.dot_eaten);
+    disable(&state.game.pill_eaten);
+    disable(&state.game.ghost_eaten);
+    disable(&state.game.pacman_eaten);
+    disable(&state.game.fruit_eaten);
+    disable(&state.game.force_leave_house);
+    disable(&state.game.fruit_active);
 }
 
 // intialize a new game
 fn gameInit() void {
-    state.input.enable();
+    inputEnable();
     gameInitTriggers();
     state.game.round = DbgStartRound;
     state.game.freeze = FreezePrelude;
@@ -1162,7 +1279,7 @@ fn gameRoundInit() void {
 
     // the force-house trigger forces ghosts out of the house if Pacman
     // hasn't been eating dots for a while
-    state.game.force_leave_house.start();
+    start(&state.game.force_leave_house);
 
     // Pacman starts running to the left
     state.game.pacman = .{
@@ -1172,7 +1289,7 @@ fn gameRoundInit() void {
         }
     };
     // Blinky starts outside the ghost house, looking to the left and in scatter mode
-    Ghost.blinky().* = .{
+    blinky().* = .{
         .actor = .{
             .dir = .Left,
             .pos = .{ 14*8, 14*8 + 4 },
@@ -1182,7 +1299,7 @@ fn gameRoundInit() void {
         .state = .Scatter
     };
     // Pinky starts in the middle slot of the ghost house, heading down
-    Ghost.pinky().* = .{
+    pinky().* = .{
         .actor = .{
             .dir = .Down,
             .pos = .{ 14*8, 17*8 + 4 },
@@ -1192,7 +1309,7 @@ fn gameRoundInit() void {
         .state = .House,
     };
     // Inky starts in the left slot of the ghost house, moving up
-    Ghost.inky().* = .{
+    inky().* = .{
         .actor = .{
             .dir = .Up,
             .pos = .{ 12*8, 17*8 + 4 },
@@ -1203,7 +1320,7 @@ fn gameRoundInit() void {
         .dot_limit = 30,
     };
     // Clyde starts in the righ slot of the ghost house, moving up
-    Ghost.clyde().* = .{
+    clyde().* = .{
         .actor = .{
             .dir = .Up,
             .pos = .{ 16*8, 17*8 + 4 },
@@ -1242,7 +1359,7 @@ fn gameUpdateTiles() void {
     }
 
     // clear the fruit-eaten score after Pacman has eaten a bonus fruit
-    if (state.game.fruit_eaten.afterOnce(2*60)) {
+    if (afterOnce(state.game.fruit_eaten, 2*60)) {
         // FIXME!
         // gfxFruitScore(.None);
         assert(false);
@@ -1263,16 +1380,16 @@ fn gameUpdateTiles() void {
         var x: i16 = 24;
         while (i <= state.game.round): (i += 1) {
             if (i >= 0) {
-                const fruit = gameLevelSpec(@intCast(u32,i)).bonus_fruit;
-                gfxColorTileQuad(.{x,34}, fruit.color(), fruit.tile());
+                const fruit = levelSpec(@intCast(u32,i)).bonus_fruit;
+                gfxColorTileQuad(.{x,34}, fruitColorCode(fruit), fruitTileCode(fruit));
                 x -= 2;
             }
         }
     }
 
     // if game round was won, render the entire playfield as blinking blue/white
-    if (state.game.round_won.after(1*60)) {
-        if (0 != (state.game.round_won.since() & 0x10)) {
+    if (after(state.game.round_won, 1*60)) {
+        if (0 != (since(state.game.round_won) & 0x10)) {
             gfxClearPlayfieldToColor(ColorCodeDot);
         }
         else {
@@ -1288,7 +1405,7 @@ fn gameUpdateSprites() void {
         var spr = Sprite.pacman();
         if (spr.enabled) {
             const actor = &state.game.pacman.actor;
-            spr.pos = actor.sprite_pos();
+            spr.pos = actorToSpritePos(actor.pos);
             if (0 != (state.game.freeze & FreezeEatGhost)) {
                 // hide Pacman shortly after he's eaten a ghost
                 spr.tile = SpriteCodeInvisible;
@@ -1299,7 +1416,7 @@ fn gameUpdateSprites() void {
             }
             else if (0 != (state.game.freeze & (FreezeDead))) {
                 // play the Pacman death animation after a short pause
-                if (state.game.pacman_eaten.after(PacmanEatenTicks)) {
+                if (after(state.game.pacman_eaten, PacmanEatenTicks)) {
                     // FIXME!
                     assert(false);
                 }
@@ -1316,10 +1433,10 @@ fn gameUpdateSprites() void {
     for (state.game.ghosts) |*ghost, i| {
         var spr = Sprite.ghost(ghost.type);
         if (spr.enabled) {
-            spr.pos = ghost.actor.sprite_pos();
+            spr.pos = actorToSpritePos(ghost.actor.pos);
             // if Pacman has just died, hide ghosts
             if (0 != (state.game.freeze & FreezeDead)) {
-                if (state.game.pacman_eaten.after(PacmanEatenTicks)) {
+                if (after(state.game.pacman_eaten, PacmanEatenTicks)) {
                     spr.tile = SpriteCodeInvisible;
                 }
             }
@@ -1340,7 +1457,7 @@ fn gameUpdateSprites() void {
                     // when inside the ghost house, show the normal ghost images
                     // (FIXME: ghost's inside the ghost house also show the
                     // frightened appearance when Pacman has eaten an energizer pill)
-                    spr.animGhostFrightened(ghost.frightened.since(), gameLevelSpec(state.game.round).fright_ticks - 60);
+                    spr.animGhostFrightened(since(ghost.frightened), levelSpec(state.game.round).fright_ticks - 60);
                 },
                 else => {
                     // show the regular ghost sprite image, the ghost's
@@ -1361,23 +1478,20 @@ fn gameUpdateSprites() void {
         Sprite.fruit().* = .{
             .enabled = true,
             .pos = .{ 13 * TileWidth, 19 * TileHeight + TileHeight/2 },
-            .tile = Fruit.sprite(state.game.active_fruit),
-            .color = Fruit.color(state.game.active_fruit)
+            .tile = fruitSpriteCode(state.game.active_fruit),
+            .color = fruitColorCode(state.game.active_fruit)
         };
     }
 }
 
-const Intro = struct {
-    started: Trigger = .{},
-};
-
+// render the intro screen
 fn introTick() void {
     // on state enter, enable input and draw initial text
-    if (state.intro.started.now()) {
+    if (now(state.intro.started)) {
         // sndClear();
         gfxClearSprites();
-        state.gfx.fadein.start();
-        state.input.enable();
+        start(&state.gfx.fadein);
+        inputEnable();
         gfxClear(TileCodeSpace, ColorCodeDefault);
         gfxText(.{3,0}, "1UP   HIGH SCORE   2UP");
         gfxColorScore(.{6,1}, ColorCodeDefault, 0);
@@ -1398,19 +1512,19 @@ fn introTick() void {
         
         // 2*3 tiles ghost image
         delay += 30;
-        if (state.intro.started.afterOnce(delay)) {
+        if (afterOnce(state.intro.started, delay)) {
             gfxColorTile(.{4,y+0}, color, TileCodeGhost+0); gfxColorTile(.{5,y+0}, color, TileCodeGhost+1);
             gfxColorTile(.{4,y+1}, color, TileCodeGhost+2); gfxColorTile(.{5,y+1}, color, TileCodeGhost+3);
             gfxColorTile(.{4,y+2}, color, TileCodeGhost+4); gfxColorTile(.{5,y+2}, color, TileCodeGhost+5);
         }
         // after 1 second, the name of the ghost
         delay += 60;
-        if (state.intro.started.afterOnce(delay)) {
+        if (afterOnce(state.intro.started, delay)) {
             gfxColorText(.{7,y+1}, color, name);
         }
         // after 0.5 seconds, the nickname of the ghost
         delay += 30;
-        if (state.intro.started.afterOnce(delay)) {
+        if (afterOnce(state.intro.started, delay)) {
             gfxColorText(.{17,y+1}, color, nicknames[i]);
         }
     }
@@ -1418,7 +1532,7 @@ fn introTick() void {
     // . 10 PTS
     // o 50 PTS
     delay += 60;
-    if (state.intro.started.afterOnce(delay)) {
+    if (afterOnce(state.intro.started, delay)) {
         gfxColorTile(.{10,24}, ColorCodeDot, TileCodeDot);
         gfxText(.{12,24}, "10 \x5D\x5E\x5F");
         gfxColorTile(.{10,26}, ColorCodeDot, TileCodePill);
@@ -1427,8 +1541,8 @@ fn introTick() void {
 
     // blinking "press any key" text
     delay += 60;
-    if (state.intro.started.after(delay)) {
-        if (0 != (state.intro.started.since() & 0x20)) {
+    if (after(state.intro.started, delay)) {
+        if (0 != (since(state.intro.started) & 0x20)) {
             gfxColorText(.{3,31}, 3, "                       ");
         }
         else {
@@ -1438,106 +1552,11 @@ fn introTick() void {
 
     // if a key is pressed, advance to game state
     if (state.input.anykey) {
-        state.input.disable();
-        state.gfx.fadeout.start();
-        state.game.started.startAfter(FadeTicks);
+        inputDisable();
+        start(&state.gfx.fadeout);
+        startAfter(&state.game.started, FadeTicks);
     }
 }
-
-//--- input system -------------------------------------------------------------
-const Input = struct {
-    enabled: bool = false,
-    up: bool = false,
-    down: bool = false,
-    left: bool = false,
-    right: bool = false,
-    esc: bool = false,
-    anykey: bool = false,
-
-    fn enable(self: *Input) void {
-        self.enabled = true;
-    }
-    fn disable(self: *Input) void {
-        self.* = .{};
-    }
-    fn dir(self: *Input, default_dir: Dir) Dir {
-        if (self.enabled) {
-            if (self.up) { return .Up; }
-            else if (self.down) { return .Down; }
-            else if (self.left) { return .Left; }
-            else if (self.right) { return .Right; }
-        }
-        return default_dir;
-    }
-};
-
-//--- time-trigger system ------------------------------------------------------
-const Trigger = struct {
-    const DisabledTicks = 0xFF_FF_FF_FF;
-
-    tick: u32 = DisabledTicks,
-
-    // set trigger to next tick
-    fn start(t: *Trigger) void {
-        t.tick = state.timing.tick + 1;
-    }
-    // set trigger to a future tick
-    fn startAfter(t: *Trigger, ticks: u32) void {
-        t.tick = state.timing.tick + ticks;
-    }
-    // disable a trigger
-    fn disable(t: *Trigger) void {
-        t.tick = DisabledTicks;
-    }
-    // check if trigger is triggered in current game tick
-    fn now(t: Trigger) bool {
-        return t.tick == state.timing.tick;
-    }
-    // return number of ticks since a time trigger was triggered
-    fn since(t: Trigger) u32 {
-        if (state.timing.tick >= t.tick) {
-            return state.timing.tick - t.tick;
-        }
-        else {
-            return DisabledTicks;
-        }
-    }
-    // check if a time trigger is between begin and end tick
-    fn between(t: Trigger, begin: u32, end: u32) bool {
-        assert(begin < end);
-        if (t.tick != DisabledTicks) {
-            const ticks = since(t);
-            return (ticks >= begin) and (ticks < end);
-        }
-        else {
-            return false;
-        }
-    }
-    // check if a time trigger was triggered exactly N ticks ago
-    fn afterOnce(t: Trigger, ticks: u32) bool {
-        return since(t) == ticks;
-    }
-    // check if a time trigger was triggered more than N ticks ago
-    fn after(t: Trigger, ticks: u32) bool {
-        const s = since(t);
-        if (s != DisabledTicks) {
-            return s >= ticks;
-        }
-        else {
-            return false;
-        }
-    }
-    // same as between(t, 0, ticks)
-    fn before(t: Trigger, ticks: u32) bool {
-        const s = since(t);
-        if (s != DisabledTicks) {
-            return s < ticks;
-        }
-        else {
-            return false;
-        }
-    }
-};
 
 //--- rendering system ---------------------------------------------------------
 const TileWidth = 8;            // width/height of a background tile in pixels
@@ -1938,18 +1957,18 @@ fn gfxAddTileVertices(x: u32, y: u32, tile_code: u32, color_code: u32) void {
 }
 
 fn gfxUpdateFade() void {
-    if (state.gfx.fadein.before(FadeTicks)) {
-        const t = @intToFloat(f32, state.gfx.fadein.since()) / FadeTicks;
+    if (before(state.gfx.fadein, FadeTicks)) {
+        const t = @intToFloat(f32, since(state.gfx.fadein)) / FadeTicks;
         state.gfx.fade = @floatToInt(u8, 255.0 * (1.0 - t));
     }
-    if (state.gfx.fadein.afterOnce(FadeTicks)) {
+    if (afterOnce(state.gfx.fadein, FadeTicks)) {
         state.gfx.fade = 0;
     }
-    if (state.gfx.fadeout.before(FadeTicks)) {
-        const t = @intToFloat(f32, state.gfx.fadeout.since()) / FadeTicks;
+    if (before(state.gfx.fadeout, FadeTicks)) {
+        const t = @intToFloat(f32, since(state.gfx.fadeout)) / FadeTicks;
         state.gfx.fade = @floatToInt(u8, 255.0 * t);
     }
-    if (state.gfx.fadeout.afterOnce(FadeTicks)) {
+    if (afterOnce(state.gfx.fadeout, FadeTicks)) {
         state.gfx.fade = 255;
     }
 }
@@ -2288,10 +2307,10 @@ export fn init() void {
     stm.setup();
     gfxInit();
     if (DbgSkipIntro) {
-        state.game.started.start();
+        start(&state.game.started);
     }
     else {
-        state.intro.started.start();
+        start(&state.intro.started);
     }
 }
 
@@ -2309,16 +2328,16 @@ export fn frame() void {
         state.timing.tick_accum -= TickDurationNS;
         state.timing.tick += 1;
 
-        // check for game state change
-        if (state.intro.started.now()) {
-            state.gamestate = .Intro;
+        // check for game mode change
+        if (now(state.intro.started)) {
+            state.game_mode = .Intro;
         }
-        if (state.game.started.now()) {
-            state.gamestate = .Game;
+        if (now(state.game.started)) {
+            state.game_mode = .Game;
         }
 
-        // call the top-level gamestate tick function
-        switch (state.gamestate) {
+        // call the top-level game mode tick function
+        switch (state.game_mode) {
             .Intro => introTick(),
             .Game => gameTick(),
         }
