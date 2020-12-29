@@ -35,6 +35,20 @@ const PacmanDeathTicks = 150;       // number of ticks to show the Pacman death 
 const GameOverTicks = 3*60;         // number of ticks to show the Game Over message
 const RoundWonTicks = 4*60;         // number of ticks to wait after a round was won
 
+// rendering system constants
+const TileWidth = 8;            // width/height of a background tile in pixels
+const TileHeight = 8;
+const SpriteWidth = 16;         // width/height of a sprite in pixels
+const SpriteHeight = 16;
+const DisplayTilesX = 28;       // display width/height in number of tiles
+const DisplayTilesY = 36;
+const DisplayPixelsX = DisplayTilesX * TileWidth;
+const DisplayPixelsY = DisplayTilesY * TileHeight;
+const TileTextureWidth = 256 * TileWidth;
+const TileTextureHeight = TileHeight + SpriteHeight;
+const NumSprites = 8;
+const MaxVertices = ((DisplayTilesX*DisplayTilesY) + NumSprites + NumDebugMarkers) * 6;
+
 // common tile codes
 const TileCodeSpace      = 0x40;
 const TileCodeDot        = 0x10;
@@ -155,6 +169,7 @@ const Actor = struct {
     anim_tick:  u32 = 0,
 };
 
+// Ghost state
 const Ghost = struct {
     actor:          Actor = .{},
     type:           GhostType = .Blinky,
@@ -176,6 +191,31 @@ const Pacman = struct {
 const Trigger = struct {
     const DisabledTicks = 0xFF_FF_FF_FF;
     tick: u32 = DisabledTicks,
+};
+
+// a 'hardware sprite' struct
+const Sprite = struct {
+    enabled: bool = false,
+    tile: u8 = 0,
+    color: u8 = 0,
+    flipx: bool = false,
+    flipy: bool = false,
+    pos: ivec2 = ivec2{0,0},
+};
+
+// a 'debug marker' for visualizing ghost targets
+const DebugMarker = struct {
+    enabled: bool = false,
+    tile: u8 = 0,
+    color: u8 = 0,
+    tile_pos: ivec2 = ivec2{0,0},
+};
+
+// vertex-structure for rendering background tiles and sprites
+const Vertex = packed struct {
+    x: f32, y: f32,     // 2D-pos
+    u: f32, v: f32,     // texcoords
+    attr: u32,          // color code and opacity
 };
 
 // all mutable state is in a single nested global
@@ -233,7 +273,48 @@ const State = struct {
         force_leave_house:  Trigger = .{},
         fruit_active:       Trigger = .{},
     } = .{},
-    gfx: Gfx = .{},
+
+    gfx: struct {
+        // fade in/out
+        fadein: Trigger = .{},
+        fadeout: Trigger = .{},
+        fade: u8 = 0xFF,
+
+        // 'hardware sprites' (meh, array default initialization sure looks awkward...)
+        sprites: [NumSprites]Sprite = [_]Sprite{.{}} ** NumSprites,
+        debug_markers: [NumDebugMarkers]DebugMarker = [_]DebugMarker{.{}} ** NumDebugMarkers,
+
+        // tile- and color-buffer
+        tile_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
+        color_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
+
+        // sokol-gfx objects
+        pass_action: sg.PassAction = .{},
+        offscreen: struct {
+            vbuf: sg.Buffer = .{},
+            tile_img: sg.Image = .{},
+            palette_img: sg.Image = .{},
+            render_target: sg.Image = .{},
+            pip: sg.Pipeline = .{},
+            pass: sg.Pass = .{},
+            bind: sg.Bindings = .{},
+        } = .{},
+        display: struct {
+            quad_vbuf: sg.Buffer = .{},
+            pip: sg.Pipeline = .{},
+            bind: sg.Bindings = .{},
+        } = .{},
+
+        // upload-buffer for dynamically generated tile- and sprite-vertices
+        num_vertices: u32 = 0,
+        vertices: [MaxVertices]Vertex = undefined,
+
+        // scratch-space for decoding tile ROM dumps into a GPU texture
+        tile_pixels: [TileTextureHeight][TileTextureWidth]u8 = undefined,
+        
+        // scratch space for decoding color+palette ROM dumps into a GPU texture
+        color_palette: [256]u32 = undefined,
+    } = .{},
 };
 var state: State = .{};
 
@@ -607,6 +688,77 @@ fn move(pixel_pos: ivec2, dir: Dir, allow_cornering: bool) ivec2 {
         pos[0] = 0;
     }
     return pos;
+}
+
+// shortcuts to get sprite pointers by name
+fn spritePacman() *Sprite {
+    return &state.gfx.sprites[0];
+}
+fn spriteGhost(ghost_type: GhostType) *Sprite {
+    return &state.gfx.sprites[@enumToInt(ghost_type) + 1];
+}
+fn spriteBlinky() *Sprite {
+    return &state.gfx.sprites[1];
+}
+fn spritePinky() *Sprite {
+    return &state.gfx.sprites[2];
+}
+fn spriteInky() *Sprite {
+    return &state.gfx.sprites[3];
+}
+fn spriteClyde() *Sprite {
+    return &state.gfx.sprites[4];
+}
+fn spriteFruit() *Sprite {
+    return &state.gfx.sprites[5];
+}
+
+// set sprite image to animated pacman
+fn spriteImagePacman(dir: Dir, tick: u32) void {
+    const tiles = [2][4]u8 {
+        [_]u8 { 44, 46, 48, 46 }, // horizontal (needs flipx)
+        [_]u8 { 45, 47, 48, 47 }  // vertical (needs flipy)
+    };
+    const phase = (tick / 4) & 3;
+    var spr = spritePacman();
+    spr.enabled = true;
+    spr.tile = tiles[@enumToInt(dir) & 1][phase];
+    spr.color = ColorCodePacman;
+    spr.flipx = (dir == .Left);
+    spr.flipy = (dir == .Up);
+}
+
+// set sprite image to animated ghost
+fn spriteImageGhost(ghost_type: GhostType, dir: Dir, tick: u32) void {
+    const tiles = [4][2]u8 {
+        [_]u8 { 32, 33 },   // right
+        [_]u8 { 34, 35 },   // down
+        [_]u8 { 36, 37 },   // left
+        [_]u8 { 38, 39 },   // up
+    };
+    const phase = (tick / 8) & 1;
+    var spr = spriteGhost(ghost_type);
+    spr.tile = tiles[@enumToInt(dir)][phase];
+    spr.color = ColorCodeBlinky + @enumToInt(ghost_type)*2;
+    spr.flipx = false;
+    spr.flipy = false;
+}
+
+// set sprite image to frightened ghost
+fn spriteImageGhostFrightened(ghost_type: GhostType, tick: u32, blinking_tick: u32) void {
+    const tiles = [2]u8 { 28, 29 };
+    const phase = (tick / 4) & 1;
+    var spr = spriteGhost(ghost_type);
+    spr.tile = tiles[phase];
+    if (tick > blinking_tick) {
+        // towards end of frightened period, start blinking
+        spr.color = if (0 != (tick & 0x10)) ColorCodeFrightened else ColorCodeFrightenedBlinking;
+    }
+    else {
+        spr.color = ColorCodeFrightened;
+    }
+    spr.flipx = false;
+    spr.flipy = false;
 }
 
 //--- gameplay system ----------------------------------------------------------
@@ -1332,11 +1484,11 @@ fn gameRoundInit() void {
     };
     
     // reset sprites
-    Sprite.pacman().* = .{ .enabled = true, .color = ColorCodePacman };
-    Sprite.blinky().* = .{ .enabled = true, .color = ColorCodeBlinky };
-    Sprite.pinky().*  = .{ .enabled = true, .color = ColorCodePinky  };
-    Sprite.inky().*   = .{ .enabled = true, .color = ColorCodeInky   };
-    Sprite.clyde().*  = .{ .enabled = true, .color = ColorCodeClyde  };
+    spritePacman().* = .{ .enabled = true, .color = ColorCodePacman };
+    spriteBlinky().* = .{ .enabled = true, .color = ColorCodeBlinky };
+    spritePinky().*  = .{ .enabled = true, .color = ColorCodePinky  };
+    spriteInky().*   = .{ .enabled = true, .color = ColorCodeInky   };
+    spriteClyde().*  = .{ .enabled = true, .color = ColorCodeClyde  };
 }
 
 // update dynamic background tiles
@@ -1402,7 +1554,7 @@ fn gameUpdateTiles() void {
 fn gameUpdateSprites() void {
     // update Pacman sprite
     {
-        var spr = Sprite.pacman();
+        var spr = spritePacman();
         if (spr.enabled) {
             const actor = &state.game.pacman.actor;
             spr.pos = actorToSpritePos(actor.pos);
@@ -1423,7 +1575,7 @@ fn gameUpdateSprites() void {
             }
             else {
                 // regular Pacman animation
-                spr.animPacman(actor.dir, actor.anim_tick);
+                spriteImagePacman(actor.dir, actor.anim_tick);
             }
         }
     }
@@ -1431,7 +1583,7 @@ fn gameUpdateSprites() void {
     // update ghost sprites
     // FIXME: Zig doesn't allow a const pointer in the loop?
     for (state.game.ghosts) |*ghost, i| {
-        var spr = Sprite.ghost(ghost.type);
+        var spr = spriteGhost(ghost.type);
         if (spr.enabled) {
             spr.pos = actorToSpritePos(ghost.actor.pos);
             // if Pacman has just died, hide ghosts
@@ -1457,14 +1609,14 @@ fn gameUpdateSprites() void {
                     // when inside the ghost house, show the normal ghost images
                     // (FIXME: ghost's inside the ghost house also show the
                     // frightened appearance when Pacman has eaten an energizer pill)
-                    spr.animGhostFrightened(since(ghost.frightened), levelSpec(state.game.round).fright_ticks - 60);
+                    spriteImageGhostFrightened(ghost.type, since(ghost.frightened), levelSpec(state.game.round).fright_ticks - 60);
                 },
                 else => {
                     // show the regular ghost sprite image, the ghost's
                     // 'next_dir' is used to visualize the direction the ghost
                     // is heading to, this has the effect that ghosts already look
                     // into the direction they will move into one tile ahead
-                    spr.animGhost(ghost.type, ghost.next_dir, ghost.actor.anim_tick);
+                    spriteImageGhost(ghost.type, ghost.next_dir, ghost.actor.anim_tick);
                 }
             }
         }
@@ -1472,10 +1624,10 @@ fn gameUpdateSprites() void {
 
     // hide or display the currently active bonus fruit
     if (state.game.active_fruit == .None) {
-        Sprite.fruit().enabled = false;
+        spriteFruit().enabled = false;
     }
     else {
-        Sprite.fruit().* = .{
+        spriteFruit().* = .{
             .enabled = true,
             .pos = .{ 13 * TileWidth, 19 * TileHeight + TileHeight/2 },
             .tile = fruitSpriteCode(state.game.active_fruit),
@@ -1559,154 +1711,6 @@ fn introTick() void {
 }
 
 //--- rendering system ---------------------------------------------------------
-const TileWidth = 8;            // width/height of a background tile in pixels
-const TileHeight = 8;
-const SpriteWidth = 16;         // width/height of a sprite in pixels
-const SpriteHeight = 16;
-const DisplayTilesX = 28;       // display width/height in number of tiles
-const DisplayTilesY = 36;
-const DisplayPixelsX = DisplayTilesX * TileWidth;
-const DisplayPixelsY = DisplayTilesY * TileHeight;
-const TileTextureWidth = 256 * TileWidth;
-const TileTextureHeight = TileHeight + SpriteHeight;
-const NumSprites = 8;
-const MaxVertices = ((DisplayTilesX*DisplayTilesY) + NumSprites + NumDebugMarkers) * 6;
-
-// a 'hardware sprite' struct
-const Sprite = struct {
-    enabled: bool = false,
-    tile: u8 = 0,
-    color: u8 = 0,
-    flipx: bool = false,
-    flipy: bool = false,
-    pos: ivec2 = ivec2{0,0},
-
-    // shortcuts to get sprite pointers by name
-    fn pacman() *Sprite {
-        return &state.gfx.sprites[0];
-    }
-    fn ghost(ghost_type: GhostType) *Sprite {
-        return &state.gfx.sprites[@enumToInt(ghost_type) + 1];
-    }
-    fn blinky() *Sprite {
-        return &state.gfx.sprites[1];
-    }
-    fn pinky() *Sprite {
-        return &state.gfx.sprites[2];
-    }
-    fn inky() *Sprite {
-        return &state.gfx.sprites[3];
-    }
-    fn clyde() *Sprite {
-        return &state.gfx.sprites[4];
-    }
-    fn fruit() *Sprite {
-        return &state.gfx.sprites[5];
-    }
-
-    // set sprite image to animated pacman
-    fn animPacman(self: *Sprite, dir: Dir, tick: u32) void {
-        const tiles = [2][4]u8 {
-            [_]u8 { 44, 46, 48, 46 }, // horizontal (needs flipx)
-            [_]u8 { 45, 47, 48, 47 }  // vertical (needs flipy)
-        };
-        const phase = (tick / 4) & 3;
-        self.enabled = true;
-        self.tile = tiles[@enumToInt(dir) & 1][phase];
-        self.color = ColorCodePacman;
-        self.flipx = (dir == .Left);
-        self.flipy = (dir == .Up);
-    }
-
-    // set sprite image to animated ghost
-    fn animGhost(self: *Sprite, ghost_type: GhostType, dir: Dir, tick: u32) void {
-        const tiles = [4][2]u8 {
-            [_]u8 { 32, 33 },   // right
-            [_]u8 { 34, 35 },   // down
-            [_]u8 { 36, 37 },   // left
-            [_]u8 { 38, 39 },   // up
-        };
-        const phase = (tick / 8) & 1;
-        self.tile = tiles[@enumToInt(dir)][phase];
-        self.color = ColorCodeBlinky + @enumToInt(ghost_type)*2;
-        self.flipx = false;
-        self.flipy = false;
-    }
-
-    // set sprite image to frightened ghost
-    fn animGhostFrightened(self: *Sprite, tick: u32, blinking_tick: u32) void {
-        const tiles = [2]u8 { 28, 29 };
-        const phase = (tick / 4) & 1;
-        self.tile = tiles[phase];
-        if (tick > blinking_tick) {
-            // towards end of frightened period, start blinking
-            self.color = if (0 != (tick & 0x10)) ColorCodeFrightened else ColorCodeFrightenedBlinking;
-        }
-        else {
-            self.color = ColorCodeFrightened;
-        }
-        self.flipx = false;
-        self.flipy = false;
-    }
-};
-
-// a 'debug marker' for visualizing ghost targets
-const DebugMarker = struct {
-    enabled: bool = false,
-    tile: u8 = 0,
-    color: u8 = 0,
-    tile_pos: ivec2 = ivec2{0,0},
-};
-
-const Gfx = struct {
-    // vertex-structure for rendering background tiles and sprites
-    const Vertex = packed struct {
-        x: f32, y: f32,     // 2D-pos
-        u: f32, v: f32,     // texcoords
-        attr: u32,          // color code and opacity
-    };
-
-    // fade in/out
-    fadein: Trigger = .{},
-    fadeout: Trigger = .{},
-    fade: u8 = 0xFF,
-
-    // 'hardware sprites' (meh, array default initialization sure looks awkward...)
-    sprites: [NumSprites]Sprite = [_]Sprite{.{}} ** NumSprites,
-    debug_markers: [NumDebugMarkers]DebugMarker = [_]DebugMarker{.{}} ** NumDebugMarkers,
-
-    // tile- and color-buffer
-    tile_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
-    color_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
-
-    // sokol-gfx objects
-    pass_action: sg.PassAction = .{},
-    offscreen: struct {
-        vbuf: sg.Buffer = .{},
-        tile_img: sg.Image = .{},
-        palette_img: sg.Image = .{},
-        render_target: sg.Image = .{},
-        pip: sg.Pipeline = .{},
-        pass: sg.Pass = .{},
-        bind: sg.Bindings = .{},
-    } = .{},
-    display: struct {
-        quad_vbuf: sg.Buffer = .{},
-        pip: sg.Pipeline = .{},
-        bind: sg.Bindings = .{},
-    } = .{},
-
-    // upload-buffer for dynamically generated tile- and sprite-vertices
-    num_vertices: u32 = 0,
-    vertices: [MaxVertices]Vertex = undefined,
-
-    // scratch-space for decoding tile ROM dumps into a GPU texture
-    tile_pixels: [TileTextureHeight][TileTextureWidth]u8 = undefined,
-    
-    // scratch space for decoding color+palette ROM dumps into a GPU texture
-    color_palette: [256]u32 = undefined,
-};
-
 fn gfxInit() void {
     sg.setup(.{
         .buffer_pool_size = 2,
@@ -1895,7 +1899,7 @@ fn gfxFrame() void {
     if (state.gfx.fade > 0) {
         gfxAddFadeVertices();
     }
-    sg.updateBuffer(state.gfx.offscreen.vbuf, &state.gfx.vertices, @intCast(i32, state.gfx.num_vertices * @sizeOf(Gfx.Vertex)));
+    sg.updateBuffer(state.gfx.offscreen.vbuf, &state.gfx.vertices, @intCast(i32, state.gfx.num_vertices * @sizeOf(Vertex)));
 
     // render tiles and sprites into offscreen render target
     sg.beginPass(state.gfx.offscreen.pass, state.gfx.pass_action);
@@ -1918,7 +1922,7 @@ fn gfxFrame() void {
 }
 
 fn gfxAddVertex(x: f32, y: f32, u: f32, v: f32, color_code: u32, opacity: u32) void {
-    var vtx: *Gfx.Vertex = &state.gfx.vertices[state.gfx.num_vertices];
+    var vtx: *Vertex = &state.gfx.vertices[state.gfx.num_vertices];
     state.gfx.num_vertices += 1;
     vtx.x = x;
     vtx.y = y;
