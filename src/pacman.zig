@@ -9,7 +9,7 @@ const math   = @import("std").math;
 const DbgSkipIntro = true;         // set to true to skip intro gamestate
 const DbgSkipPrelude = false;       // set to true to skip prelude at start of gameloop
 const DbgStartRound = 0;            // set to any starting round <= 255
-const DbgShowMarkers = false;       // set to true to display debug markers
+const DbgShowMarkers = true;       // set to true to display debug markers
 const DbgEscape = true;            // set to true to end game round with Escape
 const DbgDoubleSpeed = false;       // set to true to speed up game
 const DbgGodMode = false;           // set to true to make Pacman invulnerable
@@ -372,7 +372,7 @@ fn nearEqual(v0: ivec2, v1: ivec2, tolerance: i16) bool {
         if (d[0] < 0) -d[0] else d[0],
         if (d[1] < 0) -d[1] else d[1]
     };
-    return (a[0] < tolerance) and (a[1] < tolerance);
+    return (a[0] <= tolerance) and (a[1] <= tolerance);
 }
 
 // squared distance between two ivec2
@@ -743,8 +743,6 @@ fn spriteImageGhost(ghost_type: GhostType, dir: Dir, tick: u32) void {
     var spr = spriteGhost(ghost_type);
     spr.tile = tiles[@enumToInt(dir)][phase];
     spr.color = ColorCodeBlinky + @enumToInt(ghost_type)*2;
-    spr.flipx = false;
-    spr.flipy = false;
 }
 
 // set sprite image to frightened ghost
@@ -760,8 +758,16 @@ fn spriteImageGhostFrightened(ghost_type: GhostType, tick: u32, blinking_tick: u
     else {
         spr.color = ColorCodeFrightened;
     }
-    spr.flipx = false;
-    spr.flipy = false;
+}
+
+// set sprite to ghost eyes, these are the normal ghost sprite
+// images but with a different color code which makes
+// only the eyes visible
+fn spriteImageGhostEyes(ghost_type: GhostType, dir: Dir) void {
+    const tiles = [4]u8 { 32, 34, 36, 38 };
+    var spr = spriteGhost(ghost_type);
+    spr.tile = tiles[@enumToInt(dir)];
+    spr.color = ColorCodeEyes;
 }
 
 //--- gameplay system ----------------------------------------------------------
@@ -891,17 +897,17 @@ fn gameUpdateActors() void {
             actor.anim_tick += 1;
         }
         // eat dot or energizer pill?
-        const tile_pos = pixelToTilePos(actor.pos);
-        if (isDot(tile_pos)) {
-            gfxTile(tile_pos, TileCodeSpace);
+        const pacman_tile_pos = pixelToTilePos(actor.pos);
+        if (isDot(pacman_tile_pos)) {
+            gfxTile(pacman_tile_pos, TileCodeSpace);
             state.game.score += 1;
             start(&state.game.dot_eaten);
             start(&state.game.force_leave_house);
             gameUpdateDotsEaten();
             gameUpdateGhostHouseDotCounters();
         }
-        if (isPill(tile_pos)) {
-            gfxTile(tile_pos, TileCodeSpace);
+        if (isPill(pacman_tile_pos)) {
+            gfxTile(pacman_tile_pos, TileCodeSpace);
             state.game.score += 5;
             start(&state.game.pill_eaten);
             state.game.num_ghosts_eaten = 0;
@@ -922,7 +928,30 @@ fn gameUpdateActors() void {
                 // FIXME: eat-fruit sound
             }
         }
-        // FIXME: ghost collision
+        // check if Pacman collides with a ghost
+        for (state.game.ghosts) |*ghost| {
+            const ghost_tile_pos = pixelToTilePos(ghost.actor.pos);
+            if (equal(ghost_tile_pos, pacman_tile_pos)) {
+                switch (ghost.state) {
+                    .Frightened => {
+                        // Pacman eats ghost
+                        ghost.state = .Eyes;
+                        start(&ghost.eaten);
+                        start(&state.game.ghost_eaten);
+                        state.game.num_ghosts_eaten += 1;
+                        // increase score by 20, 40, 80, 160
+                        // FIXME Zig: this is a very awkward way to write "10 * (1 << state.game.num_ghosts_eaten)"
+                        state.game.score += 10 * (@intCast(u32,1) << @intCast(u3, state.game.num_ghosts_eaten));
+                        state.game.freeze |= FreezeEatGhost;
+                        // FIXME: start EatGhost sound
+                    },
+                    .Chase, .Scatter => {
+                        // ghost eats Pacman
+                    },
+                    else => {}
+                }
+            }
+        }
     }
 
     // ghost AIs
@@ -1159,14 +1188,14 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
             const tgt_pos = ghostHouseTargetPos(ghost.type);
             if (tile_pos[1] == 14) {
                 if (pos[0] != AntePortasX) {
-                    ghost.next_dir = if (pos[0] < AntePortasX) .Left else .Right;
+                    ghost.next_dir = if (pos[0] > AntePortasX) .Left else .Right;
                 }
                 else {
                     ghost.next_dir = .Down;
                 }
             }
             else if (pos[1] == tgt_pos[1]) {
-                ghost.next_dir = if (pos[0] < tgt_pos[0]) .Right else .Left;
+                ghost.next_dir = if (pos[0] > tgt_pos[0]) .Left else .Right;
             }
             ghost.actor.dir = ghost.next_dir;
             // force movement
@@ -1612,12 +1641,21 @@ fn gameUpdateSprites() void {
             }
             else switch (ghost.state) {
                 .Eyes => {
-                    // FIXME
-                    assert(false);
+                    if (before(ghost.eaten, GhostEatenFreezeTicks)) {
+                        // if the ghost was *just* eaten by Pacman, the ghost's sprite
+                        // is replaced with a score number for a short time
+                        // (200 for the first ghost, followed by 400, 800 and 1600)
+                        spr.tile = SpriteCodeScore200 + state.game.num_ghosts_eaten - 1;
+                        spr.color = ColorCodeGhostScore;
+                    }
+                    else {
+                        // afterwards the ghost's eyes are shown, heading back to the ghost house
+                        spriteImageGhostEyes(ghost.type, ghost.next_dir);
+                    }
                 },
                 .EnterHouse => {
-                    // FIXME: show ghost eyes
-                    assert(false);
+                    // show ghost eyes while entering the ghost house
+                    spriteImageGhostEyes(ghost.type, ghost.next_dir);
                 },
                 .Frightened => {
                     // when inside the ghost house, show the normal ghost images
