@@ -284,9 +284,8 @@ const State = struct {
         sprites: [NumSprites]Sprite = [_]Sprite{.{}} ** NumSprites,
         debug_markers: [NumDebugMarkers]DebugMarker = [_]DebugMarker{.{}} ** NumDebugMarkers,
 
-        // tile- and color-buffer
-        tile_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
-        color_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
+        // number of valid vertices in data.vertices
+        num_vertices: u32 = 0,
 
         // sokol-gfx objects
         pass_action: sg.PassAction = .{},
@@ -304,19 +303,20 @@ const State = struct {
             pip: sg.Pipeline = .{},
             bind: sg.Bindings = .{},
         } = .{},
-
-        // upload-buffer for dynamically generated tile- and sprite-vertices
-        num_vertices: u32 = 0,
-        vertices: [MaxVertices]Vertex = undefined,
-
-        // scratch-space for decoding tile ROM dumps into a GPU texture
-        tile_pixels: [TileTextureHeight][TileTextureWidth]u8 = undefined,
-        
-        // scratch space for decoding color+palette ROM dumps into a GPU texture
-        color_palette: [256]u32 = undefined,
     } = .{},
 };
 var state: State = .{};
+
+// keep the big undefined data out of the state struct, mixing initialized
+// and uninitialized data bloats the executable size
+const UndefinedData = struct {
+    tile_ram:       [DisplayTilesY][DisplayTilesX]u8 = undefined,
+    color_ram:      [DisplayTilesY][DisplayTilesX]u8 = undefined,
+    vertices:       [MaxVertices]Vertex = undefined,
+    tile_pixels:    [TileTextureHeight][TileTextureWidth]u8 = undefined,
+    color_palette:  [256]u32 = undefined,
+};
+var data: UndefinedData = .{};
 
 // level specifications
 const LevelSpec = struct {
@@ -1734,8 +1734,8 @@ fn gfxClear(tile_code: u8, color_code: u8) void {
     while (y < DisplayTilesY): (y += 1) {
         var x: u32 = 0;
         while (x < DisplayTilesX): (x += 1) {
-            state.gfx.tile_ram[y][x] = tile_code;
-            state.gfx.color_ram[y][x] = color_code;
+            data.tile_ram[y][x] = tile_code;
+            data.color_ram[y][x] = color_code;
         }
     }
 }
@@ -1745,21 +1745,21 @@ fn gfxClearPlayfieldToColor(color_code: u8) void {
     while (y < (DisplayTilesY-2)): (y += 1) {
         var x: usize = 0;
         while (x < DisplayTilesX): (x += 1) {
-            state.gfx.color_ram[y][x] = color_code;
+            data.color_ram[y][x] = color_code;
         }
     }
 }
 
 fn gfxTileAt(pos: ivec2) u8 {
-    return state.gfx.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])];
+    return data.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])];
 }
 
 fn gfxTile(pos: ivec2, tile_code: u8) void {
-    state.gfx.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = tile_code;
+    data.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = tile_code;
 }
 
 fn gfxColor(pos: ivec2, color_code: u8) void {
-    state.gfx.color_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = color_code;
+    data.color_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = color_code;
 }
 
 fn gfxColorTile(pos: ivec2, color_code: u8, tile_code: u8) void {
@@ -1899,7 +1899,7 @@ fn gfxFrame() void {
     if (state.gfx.fade > 0) {
         gfxAddFadeVertices();
     }
-    sg.updateBuffer(state.gfx.offscreen.vbuf, &state.gfx.vertices, @intCast(i32, state.gfx.num_vertices * @sizeOf(Vertex)));
+    sg.updateBuffer(state.gfx.offscreen.vbuf, &data.vertices, @intCast(i32, state.gfx.num_vertices * @sizeOf(Vertex)));
 
     // render tiles and sprites into offscreen render target
     sg.beginPass(state.gfx.offscreen.pass, state.gfx.pass_action);
@@ -1922,7 +1922,7 @@ fn gfxFrame() void {
 }
 
 fn gfxAddVertex(x: f32, y: f32, u: f32, v: f32, color_code: u32, opacity: u32) void {
-    var vtx: *Vertex = &state.gfx.vertices[state.gfx.num_vertices];
+    var vtx: *Vertex = &data.vertices[state.gfx.num_vertices];
     state.gfx.num_vertices += 1;
     vtx.x = x;
     vtx.y = y;
@@ -1982,8 +1982,8 @@ fn gfxAddPlayfieldVertices() void {
     while (y < DisplayTilesY): (y += 1) {
         var x: u32 = 0;
         while (x < DisplayTilesX): (x += 1) {
-            const tile_code = state.gfx.tile_ram[y][x];
-            const color_code = state.gfx.color_ram[y][x] & 0x1F;
+            const tile_code = data.tile_ram[y][x];
+            const color_code = data.color_ram[y][x] & 0x1F;
             gfxAddTileVertices(x, y, tile_code, color_code);
         }
     }
@@ -2076,7 +2076,7 @@ void {
             const p_hi: u8 = (src[ti] >> (7 - y)) & 1;
             const p_lo: u8 = (src[ti] >> (3 - y)) & 1;
             const p: u8 = (p_hi << 1) | p_lo;
-            state.gfx.tile_pixels[dst_y + y][dst_x + x] = p;
+            data.tile_pixels[dst_y + y][dst_x + x] = p;
         }
     }
 }
@@ -2125,7 +2125,7 @@ fn gfxDecodeTiles() void {
     while (y < TileTextureHeight): (y += 1) {
         var x: u32 = 64 * SpriteWidth;
         while (x < (65 * SpriteWidth)): (x += 1) {
-            state.gfx.tile_pixels[y][x] = 1;
+            data.tile_pixels[y][x] = 1;
         }
     }
 }
@@ -2155,7 +2155,7 @@ fn gfxDecodeColorPalette() void {
 
     // build 256-entry from indirection palette ROM
     const palette_rom = @embedFile("roms/pacman_palette.rom");
-    for (state.gfx.color_palette) |*pt, i| {
+    for (data.color_palette) |*pt, i| {
         pt.* = hw_colors[palette_rom[i] & 0xF];
         // first color in each color block is transparent
         if ((i & 3) == 0) {
@@ -2174,7 +2174,7 @@ fn gfxCreateResources() void {
     // create a dynamic vertex buffer for the tile and sprite quads
     state.gfx.offscreen.vbuf = sg.makeBuffer(.{
         .usage = .STREAM,
-        .size = @sizeOf(@TypeOf(state.gfx.vertices))
+        .size = @sizeOf(@TypeOf(data.vertices))
     });
 
     // create a quad-vertex-buffer for rendering the offscreen render target to the display
@@ -2274,8 +2274,8 @@ fn gfxCreateResources() void {
             .wrap_v = .CLAMP_TO_EDGE,
         };
         img_desc.content.subimage[0][0] = .{
-            .ptr = &state.gfx.tile_pixels,
-            .size = @sizeOf(@TypeOf(state.gfx.tile_pixels))
+            .ptr = &data.tile_pixels,
+            .size = @sizeOf(@TypeOf(data.tile_pixels))
         };
         state.gfx.offscreen.tile_img = sg.makeImage(img_desc);
     }
@@ -2292,8 +2292,8 @@ fn gfxCreateResources() void {
             .wrap_v = .CLAMP_TO_EDGE,
         };
         img_desc.content.subimage[0][0] = .{
-            .ptr = &state.gfx.color_palette,
-            .size = @sizeOf(@TypeOf(state.gfx.color_palette))
+            .ptr = &data.color_palette,
+            .size = @sizeOf(@TypeOf(data.color_palette))
         };
         state.gfx.offscreen.palette_img = sg.makeImage(img_desc);
     }
