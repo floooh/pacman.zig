@@ -9,7 +9,7 @@ const math   = @import("std").math;
 const DbgSkipIntro = true;         // set to true to skip intro gamestate
 const DbgSkipPrelude = false;       // set to true to skip prelude at start of gameloop
 const DbgStartRound = 0;            // set to any starting round <= 255
-const DbgShowMarkers = true;       // set to true to display debug markers
+const DbgShowMarkers = false;       // set to true to display debug markers
 const DbgEscape = true;            // set to true to end game round with Escape
 const DbgDoubleSpeed = false;       // set to true to speed up game
 const DbgGodMode = false;           // set to true to make Pacman invulnerable
@@ -357,6 +357,11 @@ fn xorshift32() u32 {
     x ^= x<<5;
     state.game.xorshift = x;
     return x;
+}
+
+// test if two ivec2 are equal
+fn equal(v0: ivec2, v1: ivec2) bool {
+    return (v0[0] == v1[0]) and (v0[1] == v1[1]);
 }
 
 // test if two ivec2 are nearly equal
@@ -906,7 +911,17 @@ fn gameUpdateActors() void {
             gameUpdateDotsEaten();
             // FIXME: start frightened sound
         }
-        // FIXME: eat bonus fruit
+        // check if Pacman eats the bonus fruit
+        if (state.game.active_fruit != .None) {
+            const test_pos = pixelToTilePos(actor.pos + ivec2{TileWidth/2,0});
+            if (equal(test_pos, .{14,20})) {
+                start(&state.game.fruit_eaten);
+                state.game.score += levelSpec(state.game.round).bonus_score;
+                gfxFruitScore(state.game.active_fruit);
+                state.game.active_fruit = .None;
+                // FIXME: eat-fruit sound
+            }
+        }
         // FIXME: ghost collision
     }
 
@@ -1513,9 +1528,7 @@ fn gameUpdateTiles() void {
 
     // clear the fruit-eaten score after Pacman has eaten a bonus fruit
     if (afterOnce(state.game.fruit_eaten, 2*60)) {
-        // FIXME!
-        // gfxFruitScore(.None);
-        assert(false);
+        gfxFruitScore(.None);
     }
 
     // remaining lives in bottom-left corner
@@ -1853,6 +1866,26 @@ fn gfxColorTileQuad(pos: ivec2, color_code: u8, tile_code: u8) void {
             const t: u8 = tile_code + @intCast(u8,yy)*2 + (1 - @intCast(u8,xx));
             gfxColorTile(pos + ivec2{xx,yy}, color_code, t);
         }
+    }
+}
+
+// draw the fruit bonus score tiles (when Pacman has eaten the bonus fruit)
+fn gfxFruitScore(fruit: Fruit) void {
+    const color_code: u8 = if (fruit == .None) ColorCodeDot else ColorCodeFruitScore;
+    const tiles: [4]u8 = switch (fruit) {
+        .None =>        .{ 0x40, 0x40, 0x40, 0x40 },
+        .Cherries =>    .{ 0x40, 0x81, 0x85, 0x40 },
+        .Strawberry =>  .{ 0x40, 0x82, 0x85, 0x40 },
+        .Peach =>       .{ 0x40, 0x83, 0x85, 0x40 },
+        .Apple =>       .{ 0x40, 0x84, 0x85, 0x40 },
+        .Grapes =>      .{ 0x40, 0x86, 0x8D, 0x8E },
+        .Galaxian =>    .{ 0x87, 0x88, 0x8D, 0x8E },
+        .Bell =>        .{ 0x89, 0x8A, 0x8D, 0x8E },
+        .Key =>         .{ 0x8B, 0x8C, 0x8D, 0x8E },
+    };
+    var i: usize = 0;
+    while (i < 4): (i += 1) {
+        gfxColorTile(.{12+@intCast(i16,i),20}, color_code, tiles[i]);
     }
 }
 
