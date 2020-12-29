@@ -1,11 +1,9 @@
-const sg = @import("sokol").gfx;
-const sapp = @import("sokol").app;
-const stm = @import("sokol").time;
-const sgapp = @import("sokol").app_gfx_glue;
+const sg     = @import("sokol").gfx;
+const sapp   = @import("sokol").app;
+const stm    = @import("sokol").time;
+const sgapp  = @import("sokol").app_gfx_glue;
 const assert = @import("std").debug.assert;
-const math = @import("std").math;
-
-const warn = @import("std").debug.warn;
+const math   = @import("std").math;
 
 // debugging options
 const DbgSkipIntro = true;         // set to true to skip intro gamestate
@@ -1085,7 +1083,10 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
             // in frightened state just select a random target position
             // this has the effect that ghosts in frightened state 
             // move in a random direction at each intersection
-            ghost.target_pos = .{ @intCast(i16, xorshift32() % DisplayTilesX), @intCast(i16, xorshift32() % DisplayTilesY) };
+            ghost.target_pos = .{
+                @intCast(i16, xorshift32() % DisplayTilesX),
+                @intCast(i16, xorshift32() % DisplayTilesY)
+            };
         },
         .Eyes => {
             // move towards the ghost house door
