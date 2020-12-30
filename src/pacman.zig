@@ -2000,7 +2000,7 @@ fn gfxClearSprites() void {
     }
 }
 
-// adjust viewport so that aspect ration is always correct
+// adjust viewport so that aspect ratio is always correct
 fn gfxAdjustViewport(canvas_width: i32, canvas_height: i32) void {
     assert((canvas_width > 0) and (canvas_height > 0));
     const fwidth = @intToFloat(f32, canvas_width);
