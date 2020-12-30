@@ -950,8 +950,8 @@ fn gameUpdateActors() void {
                         start(&state.game.ghost_eaten);
                         state.game.num_ghosts_eaten += 1;
                         // increase score by 20, 40, 80, 160
-                        // FIXME Zig: this is a very awkward way to write "10 * (1 << state.game.num_ghosts_eaten)"
-                        state.game.score += 10 * (@intCast(u32,1) << @intCast(u3, state.game.num_ghosts_eaten));
+                        // FIXME Zig: "10 * (1 << state.game.num_ghosts_eaten)" is quite awkward in Zig
+                        state.game.score += 10 * math.pow(u32, 2, state.game.num_ghosts_eaten);
                         state.game.freeze |= FreezeEatGhost;
                         // FIXME: start EatGhost sound
                     },
