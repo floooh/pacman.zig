@@ -669,7 +669,7 @@ fn isBlockingTile(tile_pos: ivec2) bool {
     return gfxTileAt(tile_pos) >= 0xC0;
 }
 
-// check if a tile position contaisn a dot
+// check if a tile position contains a dot
 fn isDot(tile_pos: ivec2) bool {
     return gfxTileAt(tile_pos) == TileCodeDot;
 }
