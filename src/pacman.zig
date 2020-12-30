@@ -295,7 +295,6 @@ const State = struct {
         global_dot_counter: u16 = 0,
 
         started:            Trigger = .{},
-        prelude_started:    Trigger = .{},
         ready_started:      Trigger = .{},
         round_started:      Trigger = .{},
         round_won:          Trigger = .{},
@@ -839,7 +838,6 @@ fn gameTick() void {
         // debug: skip predule
         const prelude_ticks_per_sec = if (DbgSkipPrelude) 1 else 60;
         start(&state.gfx.fadein);
-        start(&state.game.prelude_started);
         startAfter(&state.game.ready_started, 2*prelude_ticks_per_sec);
         soundPrelude();
         gameInit();
