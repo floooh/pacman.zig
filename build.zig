@@ -13,6 +13,7 @@ fn buildSokol(b: *Builder) *LibExeObjStep {
         l.linkSystemLibrary("Xi");
         l.linkSystemLibrary("Xcursor");
         l.linkSystemLibrary("GL");
+        l.linkSystemLibrary("asound");
     }
     return l;
 }

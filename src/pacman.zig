@@ -1,11 +1,13 @@
 const sg     = @import("sokol").gfx;
 const sapp   = @import("sokol").app;
-const stm    = @import("sokol").time;
 const sgapp  = @import("sokol").app_gfx_glue;
+const stm    = @import("sokol").time;
+const saudio = @import("sokol").audio;
 const assert = @import("std").debug.assert;
 const math   = @import("std").math;
 
-// debugging options
+// debugging and config options
+const AudioVolume = 0.5;
 const DbgSkipIntro = false;         // set to true to skip intro gamestate
 const DbgSkipPrelude = false;       // set to true to skip prelude at start of gameloop
 const DbgStartRound = 0;            // set to any starting round <= 255
@@ -46,6 +48,11 @@ const TileTextureWidth = 256 * TileWidth;
 const TileTextureHeight = TileHeight + SpriteHeight;
 const NumSprites = 8;
 const MaxVertices = ((DisplayTilesX*DisplayTilesY) + NumSprites + NumDebugMarkers) * 6;
+
+// sound system constants
+const NumVoices = 3;
+const NumSounds = 3;
+const NumSamples = 128;
 
 // common tile codes
 const TileCodeSpace      = 0x40;
@@ -216,6 +223,43 @@ const Vertex = packed struct {
     attr: u32,          // color code and opacity
 };
 
+// callback function signature for procedural sounds
+const SoundFunc = fn(usize) void;
+
+// a sound effect description
+const SoundDesc = struct {
+    func: ?SoundFunc = null,    // optional pointer to sound effect callback if this is a procedural sound
+    dump: ?[]const u32 = null,  // optional register dump data slice
+    voice: [NumVoices]bool = .{ false, false, false},   // active voices
+    looping: bool = false,
+};
+
+// a sound 'hardware voice' (of a Namco WSG emulation)
+const Voice = struct {
+    counter:    u20 = 0,    // a 20-bit wrap around frequency counter
+    frequency:  u20 = 0,    // a 20-bit frequency
+    waveform:   u3 = 0,     // a 3-bit waveform index into wavetable ROM dump
+    volume:     u4 = 0,     // a 4-bit volume
+    sample_acc: f32 = 0.0,
+    sample_div: f32 = 0.0,
+};
+
+// flags for Sound.flags
+const SoundFlagVoice0: u8 = (1<<0);
+const SoundFlagVoice1: u8 = (1<<1);
+const SoundFlagVoice2: u8 = (1<<2);
+const SoundFlagLooping: u8 = (1<<3);
+const SoundFlagAllVoices: u8 = SoundFlagVoice0|SoundFlagVoice1|SoundFlagVoice2;
+
+// a sound effect struct
+const Sound = struct {
+    cur_tick: u32 = 0,          // current 60Hz tick counter
+    func: ?SoundFunc = null,    // optional callback for procedural sounds
+    dump: ?[]const u32 = null,  // optional register dump data
+    stride: u32 = 0,            // register data stride for multivoice dumps
+    flags: u8 = 0,              // combination of SoundFlag*
+};
+
 // all mutable state is in a single nested global
 const State = struct {
     game_mode: GameMode = .Intro,
@@ -272,6 +316,17 @@ const State = struct {
         fruit_active:       Trigger = .{},
     } = .{},
 
+    audio: struct {
+        voices: [NumVoices]Voice = [_]Voice{.{}} ** NumVoices,
+        sounds: [NumSounds]Sound = [_]Sound{.{}} ** NumSounds,
+        voice_tick_accum: i32 = 0,
+        voice_tick_period: i32 = 0,
+        sample_duration_ns: i32 = 0,
+        sample_accum: i32 = 0,
+        num_samples: u32 = 0,
+        // sample_buffer is separate in UndefinedData
+    } = .{},
+
     gfx: struct {
         // fade in/out
         fadein:  Trigger = .{},
@@ -313,6 +368,7 @@ const UndefinedData = struct {
     vertices:       [MaxVertices]Vertex = undefined,
     tile_pixels:    [TileTextureHeight][TileTextureWidth]u8 = undefined,
     color_palette:  [256]u32 = undefined,
+    sample_buffer:  [NumSamples]f32 = undefined,
 };
 var data: UndefinedData = .{};
 
@@ -2404,10 +2460,78 @@ fn gfxCreateResources() void {
     state.gfx.display.bind.fs_images[0] = state.gfx.offscreen.render_target;
 }
 
+//--- audio system -------------------------------------------------------------
+fn soundInit() void {
+    saudio.setup(.{});
+
+    // compute sample duration in nanoseconds
+    const samples_per_sec: i32 = saudio.sampleRate();
+    state.audio.sample_duration_ns = @divTrunc(1_000_000_000, samples_per_sec);
+
+    // compute number of 96kHz ticks per sample tick (the Namco sound 
+    // generator runs at 96kHz), times 1000 for increased precision
+    state.audio.voice_tick_period = @divTrunc(96_000_000, samples_per_sec);
+}
+
+fn soundShutdown() void {
+    saudio.shutdown();
+}
+
+// update the Namco sound generator emulation, must be called at 96Khz
+const WaveTableRom = @embedFile("roms/pacman_wavetable.rom");
+fn soundVoiceTick() void {
+    for (state.audio.voices) |*voice| {
+        voice.counter +%= voice.frequency;  // NOTE: add with wraparound
+        // lookup current 4-bit sample from waveform index and
+        // topmost 5 bits of the frequency counter
+        const wave_index: u8 = (@intCast(u8,voice.waveform) << 5) | @intCast(u8, voice.counter >> 15);
+        // sample is (-8..+7) * 16 -> -128 .. +127
+        const sample: i32 = (@intCast(i32, WaveTableRom[wave_index] & 0xF) - 8) * voice.volume;
+        voice.sample_acc += @intToFloat(f32, sample);
+        voice.sample_div += 128.0;
+    }
+}
+
+// the per-sample tick function must be called with the playback sample rate (e.g. 44.1kHz)
+fn soundSampleTick() void {
+    var sm: f32 = 0.0;
+    for (state.audio.voices) |*voice| {
+        if (voice.sample_div > 0.0) {
+            sm += voice.sample_acc / voice.sample_div;
+            voice.sample_acc = 0.0;
+            voice.sample_div = 0.0;
+        }
+    }
+    data.sample_buffer[state.audio.num_samples] = sm * 0.33333 * AudioVolume;
+    state.audio.num_samples += 1;
+    if (state.audio.num_samples == NumSamples) {
+        _ = saudio.push(&data.sample_buffer[0], NumSamples);
+        state.audio.num_samples = 0;
+    }
+}
+
+// the sound systems per-frame function
+fn soundFrame(frame_time_ns: i32) void {
+    // for each sample to generate...
+    state.audio.sample_accum -= frame_time_ns;
+    while (state.audio.sample_accum < 0) {
+        state.audio.sample_accum += state.audio.sample_duration_ns;
+        // tick the sound generator at 96kHz
+        state.audio.voice_tick_accum -= state.audio.voice_tick_period;
+        while (state.audio.voice_tick_accum < 0) {
+            state.audio.voice_tick_accum += 1000;
+            soundVoiceTick();
+        }
+        // generate new sample into local sample buffer, and push to sokol-audio if buffer full
+        soundSampleTick();
+    }
+}
+
 //--- sokol-app callbacks ------------------------------------------------------
 export fn init() void {
     stm.setup();
     gfxInit();
+    soundInit();
     if (DbgSkipIntro) {
         start(&state.game.started);
     }
@@ -2445,6 +2569,7 @@ export fn frame() void {
         }
     }
     gfxFrame();
+    soundFrame(@floatToInt(i32, frame_time_ns));
 }
 
 export fn input(ev: ?*const sapp.Event) void {
@@ -2466,6 +2591,7 @@ export fn input(ev: ?*const sapp.Event) void {
 }
 
 export fn cleanup() void {
+    soundShutdown();
     gfxShutdown();
 }
 
