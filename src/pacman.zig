@@ -880,7 +880,7 @@ fn gameTick() void {
 
     // play pacman-death sound
     if (afterOnce(state.game.pacman_eaten, PacmanEatenTicks)) {
-        // FIXME: play sound
+        soundDead();
     }
 
     // update Pacman and ghost state
@@ -2610,6 +2610,14 @@ fn soundPrelude() void {
     });
 }
 
+// start the Pacman dying sound effect
+fn soundDead() void {
+    soundStart(2, .{
+        .dump = SoundDumpDead[0..],
+        .voice = .{ false, false, true }
+    });
+}
+
 // start sound effect to eat a ghost
 fn soundEatGhost() void {
     soundStart(2, .{
@@ -2837,7 +2845,7 @@ pub fn main() void {
 //    |    +-- 3 bits waveform
 //    +-- 4 bits volume
  
-const SoundDumpPrelude = [490] u32 {
+const SoundDumpPrelude = [490]u32 {
     0xE20002E0, 0xF0001700,
     0xD20002E0, 0xF0001700,
     0xC20002E0, 0xF0001700,
@@ -3083,4 +3091,97 @@ const SoundDumpPrelude = [490] u32 {
     0x320005C0, 0x00000E80,
     0x220005C0, 0x00000E80,
     0x120005C0, 0x00000E80,
+};
+
+const SoundDumpDead = [90]u32 {
+    0xF1001F00,
+    0xF1001E00,
+    0xF1001D00,
+    0xF1001C00,
+    0xF1001B00,
+    0xF1001C00,
+    0xF1001D00,
+    0xF1001E00,
+    0xF1001F00,
+    0xF1002000,
+    0xF1002100,
+    0xE1001D00,
+    0xE1001C00,
+    0xE1001B00,
+    0xE1001A00,
+    0xE1001900,
+    0xE1001800,
+    0xE1001900,
+    0xE1001A00,
+    0xE1001B00,
+    0xE1001C00,
+    0xE1001D00,
+    0xE1001E00,
+    0xD1001B00,
+    0xD1001A00,
+    0xD1001900,
+    0xD1001800,
+    0xD1001700,
+    0xD1001600,
+    0xD1001700,
+    0xD1001800,
+    0xD1001900,
+    0xD1001A00,
+    0xD1001B00,
+    0xD1001C00,
+    0xC1001900,
+    0xC1001800,
+    0xC1001700,
+    0xC1001600,
+    0xC1001500,
+    0xC1001400,
+    0xC1001500,
+    0xC1001600,
+    0xC1001700,
+    0xC1001800,
+    0xC1001900,
+    0xC1001A00,
+    0xB1001700,
+    0xB1001600,
+    0xB1001500,
+    0xB1001400,
+    0xB1001300,
+    0xB1001200,
+    0xB1001300,
+    0xB1001400,
+    0xB1001500,
+    0xB1001600,
+    0xB1001700,
+    0xB1001800,
+    0xA1001500,
+    0xA1001400,
+    0xA1001300,
+    0xA1001200,
+    0xA1001100,
+    0xA1001000,
+    0xA1001100,
+    0xA1001200,
+    0x80000800,
+    0x80001000,
+    0x80001800,
+    0x80002000,
+    0x80002800,
+    0x80003000,
+    0x80003800,
+    0x80004000,
+    0x80004800,
+    0x80005000,
+    0x80005800,
+    0x00000000,
+    0x80000800,
+    0x80001000,
+    0x80001800,
+    0x80002000,
+    0x80002800,
+    0x80003000,
+    0x80003800,
+    0x80004000,
+    0x80004800,
+    0x80005000,
+    0x80005800,
 };
