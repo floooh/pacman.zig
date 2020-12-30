@@ -230,7 +230,7 @@ const SoundFunc = fn(usize) void;
 const SoundDesc = struct {
     func: ?SoundFunc = null,    // optional pointer to sound effect callback if this is a procedural sound
     dump: ?[]const u32 = null,  // optional register dump data slice
-    voice: [NumVoices]bool = .{ false, false, false},   // active voices
+    voice: [NumVoices]bool = [_]bool{false} ** NumVoices,
     looping: bool = false,
 };
 
@@ -244,20 +244,15 @@ const Voice = struct {
     sample_div: f32 = 0.0,
 };
 
-// flags for Sound.flags
-const SoundFlagVoice0: u8 = (1<<0);
-const SoundFlagVoice1: u8 = (1<<1);
-const SoundFlagVoice2: u8 = (1<<2);
-const SoundFlagLooping: u8 = (1<<3);
-const SoundFlagAllVoices: u8 = SoundFlagVoice0|SoundFlagVoice1|SoundFlagVoice2;
-
 // a sound effect struct
 const Sound = struct {
     cur_tick: u32 = 0,          // current 60Hz tick counter
     func: ?SoundFunc = null,    // optional callback for procedural sounds
     dump: ?[]const u32 = null,  // optional register dump data
-    stride: u32 = 0,            // register data stride for multivoice dumps
-    flags: u8 = 0,              // combination of SoundFlag*
+    num_ticks: u32 = 0,         // sound effect length in ticks (only for register dump sounds)
+    stride: u32 = 0,            // register data stride for multivoice dumps (1,2 or 3)
+    voice: [NumVoices]bool = [_]bool{false} ** NumVoices,
+    looping: bool = false,      // whether this is a looping sound
 };
 
 // all mutable state is in a single nested global
@@ -1014,7 +1009,7 @@ fn gameUpdateActors() void {
                     .Chase, .Scatter => {
                         // ghost eats Pacman
                         if (!DbgGodMode) {
-                            // FIXME: soundClear()
+                            soundClear();
                             start(&state.game.pacman_eaten);
                             state.game.freeze |= FreezeDead;
                             // if Pacman has any lives left, start a new round, otherwise start the game over sequence
@@ -1366,8 +1361,7 @@ fn gameUpdateDotsEaten() void {
         NumDots => {
             // all dots eaten, round won
             start(&state.game.round_won);
-            // FIXME
-            // soundClear();
+            soundClear();
         },
         70, 170 => {
             // at 70 and 170 dots, show the bonus fruit
@@ -1375,14 +1369,7 @@ fn gameUpdateDotsEaten() void {
         },
         else => {}
     }
-
-    // FIXME: play alternativ crunch sound effect
-    if (0 != (state.game.num_dots_eaten & 1)) {
-        // FIXME
-    }
-    else {
-        // FIXME
-    }
+    soundEatDot(state.game.num_dots_eaten);
 }
 
 // Update the dot counters used to decide whether ghosts must leave the house.
@@ -1774,7 +1761,7 @@ fn gameUpdateSprites() void {
 fn introTick() void {
     // on state enter, enable input and draw initial text
     if (now(state.intro.started)) {
-        // sndClear();
+        soundClear();
         gfxClearSprites();
         start(&state.gfx.fadein);
         inputEnable();
@@ -2527,6 +2514,132 @@ fn soundFrame(frame_time_ns: i32) void {
     }
 }
 
+// the sound system's 60Hz tick function which takes care of sound-effect playback
+fn soundTick() void {
+    for (state.audio.sounds) |*sound, sound_slot| {
+        if (sound.func) |func| {
+            // this is a procedural sound effect
+            func(sound_slot);
+        }
+        else if (sound.dump) |dump| {
+            // this is a register dump sound effect
+            if (sound.cur_tick == sound.num_ticks) {
+                // looping? wrap around
+                if (sound.looping) {
+                    sound.cur_tick = 0;
+                }
+                else {
+                    // not looping, stop sound effect
+                    soundStop(sound_slot);
+                    continue;
+                }
+            }
+
+            // decode register dump values into voice registers
+            var dump_index = sound.cur_tick * sound.stride;
+            for (state.audio.voices) |*voice| {
+                const val: u32 = sound.dump.?[dump_index];
+                dump_index += 1;
+                // 20 bits frequency
+                voice.frequency = @intCast(u20, val);
+                // 3 bits waveform
+                voice.waveform = @intCast(u3, val>>24);
+                // 4 bits volume
+                voice.volume = @intCast(u4, val>>28);
+            }
+        }
+        sound.cur_tick += 1;
+    }
+}
+
+// clear all active sound effects and start outputting silence
+fn soundClear() void {
+    for (state.audio.voices) |*voice| {
+        voice.* = .{};
+    }
+    for (state.audio.sounds) |*sound| {
+        sound.* = .{};
+    }
+}
+
+// stop a sound effect
+fn soundStop(sound_slot: usize) void {
+    for (state.audio.voices) |*voice, i| {
+        if (state.audio.sounds[sound_slot].voice[i]) {
+            voice.* = .{};
+        }
+    }
+    state.audio.sounds[sound_slot] = .{};
+}
+
+// start a sound effect
+fn soundStart(sound_slot: usize, desc: SoundDesc) void {
+    var sound = &state.audio.sounds[sound_slot];
+    sound.* = .{};
+    sound.looping = desc.looping;
+    sound.voice = desc.voice;
+    sound.func = desc.func;
+    sound.dump = desc.dump;
+    if (sound.dump) |dump| {
+        for (sound.voice) |voice_active| {
+            if (voice_active) {
+                sound.stride += 1;
+            }
+        }
+        assert(sound.stride > 0);
+        sound.num_ticks = @intCast(u32, dump.len) / sound.stride;
+    }
+}
+
+// start procedural sound effect to eat dot (there's two separate 
+// sound effects for eating dots, one going up and one going down)
+fn soundEatDot(dots_eaten: u32) void {
+    if (0 != (dots_eaten & 1)) {
+        soundStart(2, .{
+            .func = soundFuncEatDot1,
+            .voice = .{ false, false, true }
+        });
+    }
+    else {
+        soundStart(2, .{
+            .func = soundFuncEatDot2,
+            .voice = .{ false, false, true }
+        });
+    }
+}
+
+fn soundFuncEatDot1(slot: usize) void {
+    const sound = &state.audio.sounds[slot];
+    var voice = &state.audio.voices[2];
+    if (sound.cur_tick == 0) {
+        voice.volume = 12;
+        voice.waveform = 2;
+        voice.frequency = 0x1500;
+    }
+    else if (sound.cur_tick == 5) {
+        soundStop(slot);
+    }
+    else {
+        voice.frequency -= 0x300;
+    }
+}
+
+fn soundFuncEatDot2(slot: usize) void {
+    const sound = &state.audio.sounds[slot];
+    var voice = &state.audio.voices[2];
+    if (sound.cur_tick == 0) {
+        voice.volume = 12;
+        voice.waveform = 2;
+        voice.frequency = 0x700;
+    }
+    else if (sound.cur_tick == 5) {
+        soundStop(slot);
+    }
+    else {
+        voice.frequency += 0x300;
+    }
+}
+
 //--- sokol-app callbacks ------------------------------------------------------
 export fn init() void {
     stm.setup();
@@ -2553,6 +2666,9 @@ export fn frame() void {
     while (state.timing.tick_accum > -TickToleranceNS) {
         state.timing.tick_accum -= TickDurationNS;
         state.timing.tick += 1;
+
+        // call the per-tick sound update function
+        soundTick();
 
         // check for game mode change
         if (now(state.intro.started)) {

@@ -1,7 +1,11 @@
 # pacman.zig
 Like https://github.com/floooh/pacman.c, but in Zig (WIP)
 
+Zig bindings for the sokol headers are here: https://github.com/floooh/sokol-zig
+
 ## Build and Run
+
+Zig installation: https://github.com/ziglang/zig/wiki/Install-Zig-from-a-Package-Manager
 
 >NOTE: Currently only Linux and Windows is supported, Mac might take while
 
