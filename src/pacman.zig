@@ -857,7 +857,7 @@ fn gameTick() void {
         state.game.freeze &= ~FreezeReady;
         // clear the READY! message
         gfxColorText(.{11,20}, ColorCodeDot, "      ");
-        // FIXME: start weeooh sound
+        soundWeeooh();
     }
 
     // activate/deactivate bonus fruit
@@ -870,7 +870,7 @@ fn gameTick() void {
 
     // stop frightened sound and start weeooh sound
     if (afterOnce(state.game.pill_eaten, levelSpec(state.game.round).fright_ticks)) {
-        // FIXME: start weeooh sound
+        soundWeeooh();
     }
 
     // if game is frozen because Pacman ate a ghost, unfreeze after a while
@@ -2636,6 +2636,14 @@ fn soundEatFruit() void {
     });
 }
 
+// the "weeooh" sound effect which plays in the background
+fn soundWeeooh() void {
+    soundStart(1, .{
+        .func = soundFuncWeeooh,
+        .voice = .{ false, true, false }
+    });
+}
+
 // procedural sound effect callback functions
 fn soundFuncEatDot1(slot: usize) void {
     const sound = &state.audio.sounds[slot];
@@ -2701,6 +2709,22 @@ fn soundFuncEatFruit(slot: usize) void {
     }
     else {
         voice.frequency += 0x200;
+    }
+}
+
+fn soundFuncWeeooh(slot: usize) void {
+    const sound = &state.audio.sounds[slot];
+    var voice = &state.audio.voices[1];
+    if (sound.cur_tick == 0) {
+        voice.volume = 6;
+        voice.waveform = 6;
+        voice.frequency = 0x1000;
+    }
+    else if ((sound.cur_tick % 24) < 12) {
+        voice.frequency += 0x200;
+    }
+    else {
+        voice.frequency -= 0x200;
     }
 }
 
