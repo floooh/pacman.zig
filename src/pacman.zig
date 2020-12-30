@@ -2471,7 +2471,7 @@ fn soundVoiceTick() void {
         // topmost 5 bits of the frequency counter
         const wave_index: u8 = (@intCast(u8,voice.waveform) << 5) | @intCast(u8, voice.counter >> 15);
         // sample is (-8..+7) * 16 -> -128 .. +127
-        const sample: i32 = (@intCast(i32, WaveTableRom[wave_index] & 0xF) - 8) * voice.volume;
+        const sample: i32 = (@intCast(i32, WaveTableRom[wave_index] & 0xF) - 8) * @intCast(i32, voice.volume);
         voice.sample_acc += @intToFloat(f32, sample);
         voice.sample_div += 128.0;
     }
