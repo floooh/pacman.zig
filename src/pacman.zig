@@ -986,7 +986,7 @@ fn gameUpdateActors() void {
                 state.game.score += levelSpec(state.game.round).bonus_score;
                 gfxFruitScore(state.game.active_fruit);
                 state.game.active_fruit = .None;
-                // FIXME: eat-fruit sound
+                soundEatFruit();
             }
         }
         // check if Pacman collides with a ghost
@@ -2628,6 +2628,14 @@ fn soundEatGhost() void {
     });
 }
 
+// sound effect for eating the bonus fruit
+fn soundEatFruit() void {
+    soundStart(2, .{
+        .func = soundFuncEatFruit,
+        .voice = .{ false, false, true }
+    });
+}
+
 // procedural sound effect callback functions
 fn soundFuncEatDot1(slot: usize) void {
     const sound = &state.audio.sounds[slot];
@@ -2674,6 +2682,25 @@ fn soundFuncEatGhost(slot: usize) void {
     }
     else {
         voice.frequency += 20;
+    }
+}
+
+fn soundFuncEatFruit(slot: usize) void {
+    const sound = &state.audio.sounds[slot];
+    var voice = &state.audio.voices[2];
+    if (sound.cur_tick == 0) {
+        voice.volume = 15;
+        voice.waveform = 6;
+        voice.frequency = 0x1600;
+    }
+    else if (sound.cur_tick == 23) {
+        soundStop(slot);
+    }
+    else if (sound.cur_tick < 11) {
+        voice.frequency -= 0x200;
+    }
+    else {
+        voice.frequency += 0x200;
     }
 }
 
