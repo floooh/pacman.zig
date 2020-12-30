@@ -14,6 +14,8 @@ git clone https://github.com/floooh/pacman.zig
 cd pacman.zig
 zig build run
 ```
+Tested with zig version 0.7.1+
+
 On Windows, rendering is done through D3D11, on Linux through OpenGL.
 
 On Linux, you need to install the usual packages for GL-, X11- and ALSA-development.
