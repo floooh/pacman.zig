@@ -396,7 +396,7 @@ const LevelSpecTable = [MaxLevelSpec]LevelSpec {
     .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
 };
 
-//--- helper structs and functions ---------------------------------------------
+//--- grab bag of helper functions ---------------------------------------------
 
 // a xorshift random number generator
 fn xorshift32() u32 {
