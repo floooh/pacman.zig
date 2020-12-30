@@ -231,7 +231,6 @@ const SoundDesc = struct {
     func: ?SoundFunc = null,    // optional pointer to sound effect callback if this is a procedural sound
     dump: ?[]const u32 = null,  // optional register dump data slice
     voice: [NumVoices]bool = [_]bool{false} ** NumVoices,
-    looping: bool = false,
 };
 
 // a sound 'hardware voice' (of a Namco WSG emulation)
@@ -252,7 +251,6 @@ const Sound = struct {
     num_ticks: u32 = 0,         // sound effect length in ticks (only for register dump sounds)
     stride: u32 = 0,            // register data stride for multivoice dumps (1,2 or 3)
     voice: [NumVoices]bool = [_]bool{false} ** NumVoices,
-    looping: bool = false,      // whether this is a looping sound
 };
 
 // all mutable state is in a single nested global
@@ -976,7 +974,7 @@ fn gameUpdateActors() void {
                 start(&ghost.frightened);
             }
             gameUpdateDotsEaten();
-            // FIXME: start frightened sound
+            soundFrightened();
         }
         // check if Pacman eats the bonus fruit
         if (state.game.active_fruit != .None) {
@@ -2524,24 +2522,17 @@ fn soundTick() void {
         else if (sound.dump) |dump| {
             // this is a register dump sound effect
             if (sound.cur_tick == sound.num_ticks) {
-                // looping? wrap around
-                if (sound.looping) {
-                    sound.cur_tick = 0;
-                }
-                else {
-                    // not looping, stop sound effect
-                    soundStop(sound_slot);
-                    continue;
-                }
+                soundStop(sound_slot);
+                continue;
             }
 
             // decode register dump values into voice registers
             var dump_index = sound.cur_tick * sound.stride;
             for (state.audio.voices) |*voice, i| {
                 if (sound.voice[i]) {
-                    const val: u32 = sound.dump.?[dump_index];
+                    const val: u32 = dump[dump_index];
                     dump_index += 1;
-                    // FIXME Zig: intCasts should be necessary here, because the '&'
+                    // FIXME Zig: intCasts shouldn't be necessary here, because the '&'
                     // ensures that the result fits?
                     // 20 bits frequency
                     voice.frequency = @intCast(u20, val & ((1<<20)-1));
@@ -2580,7 +2571,6 @@ fn soundStop(sound_slot: usize) void {
 fn soundStart(sound_slot: usize, desc: SoundDesc) void {
     var sound = &state.audio.sounds[sound_slot];
     sound.* = .{};
-    sound.looping = desc.looping;
     sound.voice = desc.voice;
     sound.func = desc.func;
     sound.dump = desc.dump;
@@ -2612,7 +2602,7 @@ fn soundEatDot(dots_eaten: u32) void {
     }
 }
 
-// sound effect for playing the prelude song, this is a register dump effect
+// start sound effect for playing the prelude song, this is a register dump effect
 fn soundPrelude() void {
     soundStart(0, .{
         .dump = SoundDumpPrelude[0..],
@@ -2620,7 +2610,7 @@ fn soundPrelude() void {
     });
 }
 
-// sound effect to eat a ghost
+// start sound effect to eat a ghost
 fn soundEatGhost() void {
     soundStart(2, .{
         .func = soundFuncEatGhost,
@@ -2628,7 +2618,7 @@ fn soundEatGhost() void {
     });
 }
 
-// sound effect for eating the bonus fruit
+// start sound effect for eating the bonus fruit
 fn soundEatFruit() void {
     soundStart(2, .{
         .func = soundFuncEatFruit,
@@ -2636,10 +2626,18 @@ fn soundEatFruit() void {
     });
 }
 
-// the "weeooh" sound effect which plays in the background
+// start the "weeooh" sound effect which plays in the background
 fn soundWeeooh() void {
     soundStart(1, .{
         .func = soundFuncWeeooh,
+        .voice = .{ false, true, false }
+    });
+}
+
+// start the frightened sound (replaces the weeooh sound after energizer pill eaten)
+fn soundFrightened() void {
+    soundStart(1, .{
+        .func = soundFuncFrightened,
         .voice = .{ false, true, false }
     });
 }
@@ -2725,6 +2723,22 @@ fn soundFuncWeeooh(slot: usize) void {
     }
     else {
         voice.frequency -= 0x200;
+    }
+}
+
+fn soundFuncFrightened(slot: usize) void {
+    const sound = &state.audio.sounds[slot];
+    var voice = &state.audio.voices[1];
+    if (sound.cur_tick == 0) {
+        voice.volume = 10;
+        voice.waveform = 4;
+        voice.frequency = 0x180;
+    }
+    else if ((sound.cur_tick % 8) == 0) {
+        voice.frequency = 0x180;
+    }
+    else {
+        voice.frequency += 0x180;
     }
 }
 
