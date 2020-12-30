@@ -1,5 +1,5 @@
 # pacman.zig
-Like https://github.com/floooh/pacman.c, but in Zig (WIP)
+Like https://github.com/floooh/pacman.c, but in Zig
 
 Zig bindings for the sokol headers are here: https://github.com/floooh/sokol-zig
 
