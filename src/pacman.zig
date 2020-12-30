@@ -1004,7 +1004,7 @@ fn gameUpdateActors() void {
                         // FIXME Zig: "10 * (1 << state.game.num_ghosts_eaten)" is quite awkward in Zig
                         state.game.score += 10 * math.pow(u32, 2, state.game.num_ghosts_eaten);
                         state.game.freeze |= FreezeEatGhost;
-                        // FIXME: start EatGhost sound
+                        soundEatGhost();
                     },
                     .Chase, .Scatter => {
                         // ghost eats Pacman
@@ -2612,6 +2612,23 @@ fn soundEatDot(dots_eaten: u32) void {
     }
 }
 
+// sound effect for playing the prelude song, this is a register dump effect
+fn soundPrelude() void {
+    soundStart(0, .{
+        .dump = SoundDumpPrelude[0..],
+        .voice = .{ true, true, false }
+    });
+}
+
+// sound effect to eat a ghost
+fn soundEatGhost() void {
+    soundStart(2, .{
+        .func = soundFuncEatGhost,
+        .voice = .{ false, false, true }
+    });
+}
+
+// procedural sound effect callback functions
 fn soundFuncEatDot1(slot: usize) void {
     const sound = &state.audio.sounds[slot];
     var voice = &state.audio.voices[2];
@@ -2644,12 +2661,20 @@ fn soundFuncEatDot2(slot: usize) void {
     }
 }
 
-// sound effect for playing the prelude song, this is a register dump effect
-fn soundPrelude() void {
-    soundStart(0, .{
-        .dump = SoundDumpPrelude[0..],
-        .voice = .{ true, true, false }
-    });
+fn soundFuncEatGhost(slot: usize) void {
+    const sound = &state.audio.sounds[slot];
+    var voice = &state.audio.voices[2];
+    if (sound.cur_tick == 0) {
+        voice.volume = 12;
+        voice.waveform = 5;
+        voice.frequency = 0;
+    }
+    else if (sound.cur_tick == 32) {
+        soundStop(slot);
+    }
+    else {
+        voice.frequency += 20;
+    }
 }
 
 //--- sokol-app callbacks ------------------------------------------------------
