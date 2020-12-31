@@ -2332,13 +2332,15 @@ fn gfxCreateResources() void {
         shd_desc.fs.images[0] = .{ .name = "tile_tex", .type = ._2D };
         shd_desc.fs.images[1] = .{ .name = "pal_tex", .type = ._2D };
         shd_desc.vs.source = switch(sg.queryBackend()) {
-            .D3D11    => @embedFile("shaders/offscreen_vs.hlsl"),
-            .GLCORE33 => @embedFile("shaders/offscreen_vs.v330.glsl"),
+            .D3D11       => @embedFile("shaders/offscreen_vs.hlsl"),
+            .GLCORE33    => @embedFile("shaders/offscreen_vs.v330.glsl"),
+            .METAL_MACOS => @embedFile("shaders/offscreen_vs.metal"),
             else => unreachable,
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
-            .D3D11    => @embedFile("shaders/offscreen_fs.hlsl"),
-            .GLCORE33 => @embedFile("shaders/offscreen_fs.v330.glsl"),
+            .D3D11       => @embedFile("shaders/offscreen_fs.hlsl"),
+            .GLCORE33    => @embedFile("shaders/offscreen_fs.v330.glsl"),
+            .METAL_MACOS => @embedFile("shaders/offscreen_fs.metal"),
             else => unreachable,
         };
         var pip_desc: sg.PipelineDesc = .{
@@ -2363,13 +2365,15 @@ fn gfxCreateResources() void {
         shd_desc.attrs[0] = .{ .name = "pos", .sem_name = "POSITION" };
         shd_desc.fs.images[0] = .{ .name = "tex", .type = ._2D };
         shd_desc.vs.source = switch(sg.queryBackend()) {
-            .D3D11    => @embedFile("shaders/display_vs.hlsl"),
-            .GLCORE33 => @embedFile("shaders/display_vs.v330.glsl"),
+            .D3D11       => @embedFile("shaders/display_vs.hlsl"),
+            .GLCORE33    => @embedFile("shaders/display_vs.v330.glsl"),
+            .METAL_MACOS => @embedFile("shaders/display_vs.metal"),
             else => unreachable
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
-            .D3D11    => @embedFile("shaders/display_fs.hlsl"), 
-            .GLCORE33 => @embedFile("shaders/display_fs.v330.glsl"),
+            .D3D11       => @embedFile("shaders/display_fs.hlsl"), 
+            .GLCORE33    => @embedFile("shaders/display_fs.v330.glsl"),
+            .METAL_MACOS => @embedFile("shaders/display_fs.metal"),
             else => unreachable
         };
         var pip_desc: sg.PipelineDesc = .{
