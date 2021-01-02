@@ -12,6 +12,7 @@ fn macosAddSdkDirs(b: *bld.Builder, step: *bld.LibExeObjStep) !void {
 }
 
 fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
+    exe.linkLibC();
     if (exe.target.isDarwin()) {
         try macosAddSdkDirs(b, exe);
         exe.addCSourceFile("src/sokol/sokol.c", &[_][]const u8 { "-ObjC" });
@@ -23,7 +24,6 @@ fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
     }
     else {
         exe.addCSourceFile("src/sokol/sokol.c", &[_][]const u8{});
-        exe.linkSystemLibrary("c");
         if (exe.target.isLinux()) {
             exe.linkSystemLibrary("X11");
             exe.linkSystemLibrary("Xi");
