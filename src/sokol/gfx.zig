@@ -1,5 +1,25 @@
 // machine generated, do not edit
 
+// helper function to convert "anything" to a Range struct
+pub fn asRange(val: anytype) Range {
+    const type_info = @typeInfo(@TypeOf(val));
+    switch (type_info) {
+        .Pointer => {
+            switch (type_info.Pointer.size) {
+                .One => return .{ .ptr = val, .size = @sizeOf(type_info.Pointer.child) },
+                .Slice => return .{ .ptr = val.ptr, .size = @sizeOf(type_info.Pointer.child) * val.len },
+                else => @compileError("FIXME: Pointer type!"),
+            }
+        },
+        .Struct, .Array => {
+            return .{ .ptr = &val, .size = @sizeOf(@TypeOf(val)) };
+        },
+        else => {
+            @compileError("Cannot convert to range!");
+        }
+    }
+}
+
 pub const Buffer = extern struct {
     id: u32 = 0,
 };
@@ -17,6 +37,10 @@ pub const Pass = extern struct {
 };
 pub const Context = extern struct {
     id: u32 = 0,
+};
+pub const Range = extern struct {
+    ptr: ?*const c_void = null,
+    size: usize = 0,
 };
 pub const invalid_id = 0;
 pub const num_shader_stages = 2;
@@ -112,6 +136,7 @@ pub const PixelformatInfo = extern struct {
     blend: bool = false,
     msaa: bool = false,
     depth: bool = false,
+    __pad: [3]u32 = [_]u32{0} ** 3,
 };
 pub const Features = extern struct {
     instancing: bool = false,
@@ -121,6 +146,7 @@ pub const Features = extern struct {
     imagetype_3d: bool = false,
     imagetype_array: bool = false,
     image_clamp_to_border: bool = false,
+    __pad: [3]u32 = [_]u32{0} ** 3,
 };
 pub const Limits = extern struct {
     max_image_size_2d: u32 = 0,
@@ -363,10 +389,10 @@ pub const Bindings = extern struct {
 };
 pub const BufferDesc = extern struct {
     _start_canary: u32 = 0,
-    size: i32 = 0,
+    size: usize = 0,
     type: BufferType = .DEFAULT,
     usage: Usage = .DEFAULT,
-    content: ?*const c_void = null,
+    data: Range = .{ },
     label: [*c]const u8 = null,
     gl_buffers: [2]u32 = [_]u32{0} ** 2,
     mtl_buffers: [2]?*const c_void = [_]?*const c_void { null } ** 2,
@@ -374,12 +400,8 @@ pub const BufferDesc = extern struct {
     wgpu_buffer: ?*const c_void = null,
     _end_canary: u32 = 0,
 };
-pub const SubimageContent = extern struct {
-    ptr: ?*const c_void = null,
-    size: i32 = 0,
-};
-pub const ImageContent = extern struct {
-    subimage: [6][16]SubimageContent = [_][16]SubimageContent{[_]SubimageContent{ .{ } }**16}**6,
+pub const ImageData = extern struct {
+    subimage: [6][16]Range = [_][16]Range{[_]Range{ .{ } }**16}**6,
 };
 pub const ImageDesc = extern struct {
     _start_canary: u32 = 0,
@@ -401,7 +423,7 @@ pub const ImageDesc = extern struct {
     max_anisotropy: u32 = 0,
     min_lod: f32 = 0.0,
     max_lod: f32 = 0.0,
-    content: ImageContent = .{ },
+    data: ImageData = .{ },
     label: [*c]const u8 = null,
     gl_textures: [2]u32 = [_]u32{0} ** 2,
     gl_texture_target: u32 = 0,
@@ -422,7 +444,7 @@ pub const ShaderUniformDesc = extern struct {
     array_count: i32 = 0,
 };
 pub const ShaderUniformBlockDesc = extern struct {
-    size: i32 = 0,
+    size: usize = 0,
     uniforms: [16]ShaderUniformDesc = [_]ShaderUniformDesc{.{}} ** 16,
 };
 pub const ShaderImageDesc = extern struct {
@@ -432,8 +454,7 @@ pub const ShaderImageDesc = extern struct {
 };
 pub const ShaderStageDesc = extern struct {
     source: [*c]const u8 = null,
-    byte_code: ?[*]const u8 = null,
-    byte_code_size: i32 = 0,
+    bytecode: Range = .{ },
     entry: [*c]const u8 = null,
     d3d11_target: [*c]const u8 = null,
     uniform_blocks: [4]ShaderUniformBlockDesc = [_]ShaderUniformBlockDesc{.{}} ** 4,
@@ -537,17 +558,17 @@ pub const TraceHooks = extern struct {
     destroy_shader: ?fn(Shader, ?*c_void) callconv(.C) void = null,
     destroy_pipeline: ?fn(Pipeline, ?*c_void) callconv(.C) void = null,
     destroy_pass: ?fn(Pass, ?*c_void) callconv(.C) void = null,
-    update_buffer: ?fn(Buffer, ?*const c_void, i32, ?*c_void) callconv(.C) void = null,
-    update_image: ?fn(Image, [*c]const ImageContent, ?*c_void) callconv(.C) void = null,
-    append_buffer: ?fn(Buffer, ?*const c_void, i32, i32, ?*c_void) callconv(.C) void = null,
+    update_buffer: ?fn(Buffer, [*c]const Range, ?*c_void) callconv(.C) void = null,
+    update_image: ?fn(Image, [*c]const ImageData, ?*c_void) callconv(.C) void = null,
+    append_buffer: ?fn(Buffer, [*c]const Range, u32, ?*c_void) callconv(.C) void = null,
     begin_default_pass: ?fn([*c]const PassAction, i32, i32, ?*c_void) callconv(.C) void = null,
     begin_pass: ?fn(Pass, [*c]const PassAction, ?*c_void) callconv(.C) void = null,
     apply_viewport: ?fn(i32, i32, i32, i32, bool, ?*c_void) callconv(.C) void = null,
     apply_scissor_rect: ?fn(i32, i32, i32, i32, bool, ?*c_void) callconv(.C) void = null,
     apply_pipeline: ?fn(Pipeline, ?*c_void) callconv(.C) void = null,
     apply_bindings: ?fn([*c]const Bindings, ?*c_void) callconv(.C) void = null,
-    apply_uniforms: ?fn(ShaderStage, i32, ?*const c_void, i32, ?*c_void) callconv(.C) void = null,
-    draw: ?fn(i32, i32, i32, ?*c_void) callconv(.C) void = null,
+    apply_uniforms: ?fn(ShaderStage, u32, [*c]const Range, ?*c_void) callconv(.C) void = null,
+    draw: ?fn(u32, u32, u32, ?*c_void) callconv(.C) void = null,
     end_pass: ?fn(?*c_void) callconv(.C) void = null,
     commit: ?fn(?*c_void) callconv(.C) void = null,
     alloc_buffer: ?fn(Buffer, ?*c_void) callconv(.C) void = null,
@@ -596,7 +617,7 @@ pub const BufferInfo = extern struct {
     slot: SlotInfo = .{ },
     update_frame_index: u32 = 0,
     append_frame_index: u32 = 0,
-    append_pos: i32 = 0,
+    append_pos: u32 = 0,
     append_overflow: bool = false,
     num_slots: i32 = 0,
     active_slot: i32 = 0,
@@ -739,17 +760,17 @@ pub extern fn sg_destroy_pass(Pass) void;
 pub fn destroyPass(pass: Pass) void {
     sg_destroy_pass(pass);
 }
-pub extern fn sg_update_buffer(Buffer, ?*const c_void, i32) void;
-pub fn updateBuffer(buf: Buffer, data_ptr: ?*const c_void, data_size: i32) void {
-    sg_update_buffer(buf, data_ptr, data_size);
+pub extern fn sg_update_buffer(Buffer, [*c]const Range) void;
+pub fn updateBuffer(buf: Buffer, data: Range) void {
+    sg_update_buffer(buf, &data);
 }
-pub extern fn sg_update_image(Image, [*c]const ImageContent) void;
-pub fn updateImage(img: Image, data: ImageContent) void {
+pub extern fn sg_update_image(Image, [*c]const ImageData) void;
+pub fn updateImage(img: Image, data: ImageData) void {
     sg_update_image(img, &data);
 }
-pub extern fn sg_append_buffer(Buffer, ?*const c_void, i32) i32;
-pub fn appendBuffer(buf: Buffer, data_ptr: ?*const c_void, data_size: i32) i32 {
-    return sg_append_buffer(buf, data_ptr, data_size);
+pub extern fn sg_append_buffer(Buffer, [*c]const Range) u32;
+pub fn appendBuffer(buf: Buffer, data: Range) u32 {
+    return sg_append_buffer(buf, &data);
 }
 pub extern fn sg_query_buffer_overflow(Buffer) bool;
 pub fn queryBufferOverflow(buf: Buffer) bool {
@@ -759,6 +780,10 @@ pub extern fn sg_begin_default_pass([*c]const PassAction, i32, i32) void;
 pub fn beginDefaultPass(pass_action: PassAction, width: i32, height: i32) void {
     sg_begin_default_pass(&pass_action, width, height);
 }
+pub extern fn sg_begin_default_passf([*c]const PassAction, f32, f32) void;
+pub fn beginDefaultPassf(pass_action: PassAction, width: f32, height: f32) void {
+    sg_begin_default_passf(&pass_action, width, height);
+}
 pub extern fn sg_begin_pass(Pass, [*c]const PassAction) void;
 pub fn beginPass(pass: Pass, pass_action: PassAction) void {
     sg_begin_pass(pass, &pass_action);
@@ -767,9 +792,17 @@ pub extern fn sg_apply_viewport(i32, i32, i32, i32, bool) void;
 pub fn applyViewport(x: i32, y: i32, width: i32, height: i32, origin_top_left: bool) void {
     sg_apply_viewport(x, y, width, height, origin_top_left);
 }
+pub extern fn sg_apply_viewportf(f32, f32, f32, f32, bool) void;
+pub fn applyViewportf(x: f32, y: f32, width: f32, height: f32, origin_top_left: bool) void {
+    sg_apply_viewportf(x, y, width, height, origin_top_left);
+}
 pub extern fn sg_apply_scissor_rect(i32, i32, i32, i32, bool) void;
 pub fn applyScissorRect(x: i32, y: i32, width: i32, height: i32, origin_top_left: bool) void {
     sg_apply_scissor_rect(x, y, width, height, origin_top_left);
+}
+pub extern fn sg_apply_scissor_rectf(f32, f32, f32, f32, bool) void;
+pub fn applyScissorRectf(x: f32, y: f32, width: f32, height: f32, origin_top_left: bool) void {
+    sg_apply_scissor_rectf(x, y, width, height, origin_top_left);
 }
 pub extern fn sg_apply_pipeline(Pipeline) void;
 pub fn applyPipeline(pip: Pipeline) void {
@@ -779,12 +812,12 @@ pub extern fn sg_apply_bindings([*c]const Bindings) void;
 pub fn applyBindings(bindings: Bindings) void {
     sg_apply_bindings(&bindings);
 }
-pub extern fn sg_apply_uniforms(ShaderStage, i32, ?*const c_void, i32) void;
-pub fn applyUniforms(stage: ShaderStage, ub_index: i32, data: ?*const c_void, num_bytes: i32) void {
-    sg_apply_uniforms(stage, ub_index, data, num_bytes);
+pub extern fn sg_apply_uniforms(ShaderStage, u32, [*c]const Range) void;
+pub fn applyUniforms(stage: ShaderStage, ub_index: u32, data: Range) void {
+    sg_apply_uniforms(stage, ub_index, &data);
 }
-pub extern fn sg_draw(i32, i32, i32) void;
-pub fn draw(base_element: i32, num_elements: i32, num_instances: i32) void {
+pub extern fn sg_draw(u32, u32, u32) void;
+pub fn draw(base_element: u32, num_elements: u32, num_instances: u32) void {
     sg_draw(base_element, num_elements, num_instances);
 }
 pub extern fn sg_end_pass() void;

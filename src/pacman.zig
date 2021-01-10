@@ -1999,28 +1999,24 @@ fn gfxClearSprites() void {
 }
 
 // adjust viewport so that aspect ratio is always correct
-fn gfxAdjustViewport(canvas_width: i32, canvas_height: i32) void {
+fn gfxAdjustViewport(canvas_width: f32, canvas_height: f32) void {
     assert((canvas_width > 0) and (canvas_height > 0));
-    const fwidth = @intToFloat(f32, canvas_width);
-    const fheight = @intToFloat(f32, canvas_height);
-    const canvas_aspect = fwidth / fheight;
+    const canvas_aspect = canvas_width / canvas_height;
     const playfield_aspect = @intToFloat(f32, DisplayTilesX) / DisplayTilesY;
-    const border = 10;
+    const border = 10.0;
     if (playfield_aspect < canvas_aspect) {
-        const vp_y: i32 = border;
-        const vp_h: i32 = canvas_height - 2*border;
-        const vp_w: i32 = @floatToInt(i32, fheight * playfield_aspect) - 2*border;
-        // FIXME: why is /2 not possible here?
-        const vp_x: i32 = (canvas_width - vp_w) >> 1;
-        sg.applyViewport(vp_x, vp_y, vp_w, vp_h, true);
+        const vp_y: f32 = border;
+        const vp_h: f32 = canvas_height - 2*border;
+        const vp_w: f32 = (canvas_height * playfield_aspect) - 2*border;
+        const vp_x: f32 = (canvas_width - vp_w) * 0.5;
+        sg.applyViewportf(vp_x, vp_y, vp_w, vp_h, true);
     }
     else {
-        const vp_x: i32 = border;
-        const vp_w: i32 = canvas_width - 2*border;
-        const vp_h: i32 = @floatToInt(i32, fwidth / playfield_aspect) - 2*border;
-        // FIXME: why is /2 not possible here?
-        const vp_y: i32 = (canvas_height - vp_h) >> 1;
-        sg.applyViewport(vp_x, vp_y, vp_w, vp_h, true);
+        const vp_x: f32 = border;
+        const vp_w: f32 = canvas_width - 2*border;
+        const vp_h: f32 = (canvas_width / playfield_aspect) - 2*border;
+        const vp_y: f32 = (canvas_height - vp_h) * 0.5;
+        sg.applyViewportf(vp_x, vp_y, vp_w, vp_h, true);
     }
 }
 
@@ -2036,20 +2032,20 @@ fn gfxFrame() void {
     if (state.gfx.fade > 0) {
         gfxAddFadeVertices();
     }
-    sg.updateBuffer(state.gfx.offscreen.vbuf, &data.vertices, @intCast(i32, state.gfx.num_vertices * @sizeOf(Vertex)));
+    sg.updateBuffer(state.gfx.offscreen.vbuf, .{ .ptr=&data.vertices, .size=state.gfx.num_vertices * @sizeOf(Vertex) });
 
     // render tiles and sprites into offscreen render target
     sg.beginPass(state.gfx.offscreen.pass, state.gfx.pass_action);
     sg.applyPipeline(state.gfx.offscreen.pip);
     sg.applyBindings(state.gfx.offscreen.bind);
     // FIXME: sokol-gfx should use unsigned params here
-    sg.draw(0, @intCast(i32, state.gfx.num_vertices), 1);
+    sg.draw(0, state.gfx.num_vertices, 1);
     sg.endPass();
 
     // upscale-render the offscreen render target into the display framebuffer
-    const canvas_width = sapp.width();
-    const canvas_height = sapp.height();
-    sg.beginDefaultPass(state.gfx.pass_action, canvas_width, canvas_height);
+    const canvas_width = sapp.widthf();
+    const canvas_height = sapp.heightf();
+    sg.beginDefaultPassf(state.gfx.pass_action, canvas_width, canvas_height);
     gfxAdjustViewport(canvas_width, canvas_height);
     sg.applyPipeline(state.gfx.display.pip);
     sg.applyBindings(state.gfx.display.bind);
@@ -2317,8 +2313,7 @@ fn gfxCreateResources() void {
     // create a quad-vertex-buffer for rendering the offscreen render target to the display
     const quad_verts = [_]f32{ 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0 };
     state.gfx.display.quad_vbuf = sg.makeBuffer(.{
-        .content = &quad_verts,
-        .size = @sizeOf(@TypeOf(quad_verts))
+        .data = sg.asRange(quad_verts),
     });
 
     // create pipeline and shader for rendering into offscreen render target
@@ -2414,10 +2409,7 @@ fn gfxCreateResources() void {
             .wrap_u = .CLAMP_TO_EDGE,
             .wrap_v = .CLAMP_TO_EDGE,
         };
-        img_desc.content.subimage[0][0] = .{
-            .ptr = &data.tile_pixels,
-            .size = @sizeOf(@TypeOf(data.tile_pixels))
-        };
+        img_desc.data.subimage[0][0] = sg.asRange(data.tile_pixels);
         state.gfx.offscreen.tile_img = sg.makeImage(img_desc);
     }
 
@@ -2432,10 +2424,7 @@ fn gfxCreateResources() void {
             .wrap_u = .CLAMP_TO_EDGE,
             .wrap_v = .CLAMP_TO_EDGE,
         };
-        img_desc.content.subimage[0][0] = .{
-            .ptr = &data.color_palette,
-            .size = @sizeOf(@TypeOf(data.color_palette))
-        };
+        img_desc.data.subimage[0][0] = sg.asRange(data.color_palette);
         state.gfx.offscreen.palette_img = sg.makeImage(img_desc);
     }
 
