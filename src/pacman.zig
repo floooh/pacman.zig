@@ -2301,7 +2301,7 @@ fn gfxCreateResources() void {
     // pass action for clearing background to black
     state.gfx.pass_action.colors[0] = .{
         .action = .CLEAR,
-        .val = .{ 0.0, 0.0, 0.0, 1.0 }
+        .value = .{ .r=0, .g=0, .b=0, .a=1 }
     };
 
     // create a dynamic vertex buffer for the tile and sprite quads
@@ -2324,8 +2324,8 @@ fn gfxCreateResources() void {
         shd_desc.attrs[0] = .{ .name = "pos", .sem_name = "POSITION" };
         shd_desc.attrs[1] = .{ .name = "uv_in", .sem_name = "TEXCOORD", .sem_index = 0 };
         shd_desc.attrs[2] = .{ .name = "data_in", .sem_name = "TEXCOORD", .sem_index = 1 };
-        shd_desc.fs.images[0] = .{ .name = "tile_tex", .type = ._2D };
-        shd_desc.fs.images[1] = .{ .name = "pal_tex", .type = ._2D };
+        shd_desc.fs.images[0] = .{ .name = "tile_tex", .image_type = ._2D };
+        shd_desc.fs.images[1] = .{ .name = "pal_tex", .image_type = ._2D };
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/offscreen_vs.hlsl"),
             .GLCORE33    => @embedFile("shaders/offscreen_vs.v330.glsl"),
@@ -2340,17 +2340,19 @@ fn gfxCreateResources() void {
         };
         var pip_desc: sg.PipelineDesc = .{
             .shader = sg.makeShader(shd_desc),
-            .blend = .{
-                .enabled = true,
-                .color_format = .RGBA8,
-                .depth_format = .NONE,
-                .src_factor_rgb = .SRC_ALPHA,
-                .dst_factor_rgb = .ONE_MINUS_SRC_ALPHA
-            }
+            .depth = .{
+                .pixel_format = .NONE,
+            },
         };
         pip_desc.layout.attrs[0].format = .FLOAT2;
         pip_desc.layout.attrs[1].format = .FLOAT2;
         pip_desc.layout.attrs[2].format = .UBYTE4N;
+        pip_desc.colors[0].pixel_format = .RGBA8;
+        pip_desc.colors[0].blend = .{
+            .enabled = true,
+            .src_factor_rgb = .SRC_ALPHA,
+            .dst_factor_rgb = .ONE_MINUS_SRC_ALPHA
+        };
         state.gfx.offscreen.pip = sg.makePipeline(pip_desc);
     }
 
@@ -2358,7 +2360,7 @@ fn gfxCreateResources() void {
     {
         var shd_desc: sg.ShaderDesc = .{};
         shd_desc.attrs[0] = .{ .name = "pos", .sem_name = "POSITION" };
-        shd_desc.fs.images[0] = .{ .name = "tex", .type = ._2D };
+        shd_desc.fs.images[0] = .{ .name = "tex", .image_type = ._2D };
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/display_vs.hlsl"),
             .GLCORE33    => @embedFile("shaders/display_vs.v330.glsl"),
