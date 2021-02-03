@@ -2038,7 +2038,6 @@ fn gfxFrame() void {
     sg.beginPass(state.gfx.offscreen.pass, state.gfx.pass_action);
     sg.applyPipeline(state.gfx.offscreen.pip);
     sg.applyBindings(state.gfx.offscreen.bind);
-    // FIXME: sokol-gfx should use unsigned params here
     sg.draw(0, state.gfx.num_vertices, 1);
     sg.endPass();
 
