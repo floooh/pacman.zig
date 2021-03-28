@@ -1,3 +1,8 @@
+//
+//  See comment header here for some implementation details:
+//
+//  https://github.com/floooh/pacman.c/blob/main/pacman.c
+//
 const sg     = @import("sokol").gfx;
 const sapp   = @import("sokol").app;
 const sgapp  = @import("sokol").app_gfx_glue;
