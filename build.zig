@@ -21,6 +21,14 @@ fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
             exe.linkSystemLibrary("GL");
             exe.linkSystemLibrary("asound");
         }
+        else if (exe.target.isWindows()) {
+            exe.linkSystemLibrary("kernel32");
+            exe.linkSystemLibrary("user32");
+            exe.linkSystemLibrary("ole32");
+            exe.linkSystemLibrary("d3d11");
+            exe.linkSystemLibrary("dxguid");
+            exe.linkSystemLibrary("dxgi");
+        }
     }
 }
 
