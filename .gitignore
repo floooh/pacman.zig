@@ -1,2 +1,2 @@
 .vscode/
-zig-cache/
+zig-*/
