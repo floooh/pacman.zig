@@ -1,5 +1,4 @@
 const bld = @import("std").build;
-const mem = @import("std").mem;
 
 fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
     exe.linkLibC();
