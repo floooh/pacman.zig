@@ -1,17 +1,15 @@
 const bld = @import("std").build;
 
-fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
+fn addSokol(exe: *bld.LibExeObjStep) !void {
     exe.linkLibC();
     if (exe.target.isDarwin()) {
-        b.env_map.put("ZIG_SYSTEM_LINKER_HACK", "1") catch unreachable;
-        exe.addCSourceFile("src/sokol/sokol.c", &[_][]const u8 { "-ObjC" });
+        exe.addCSourceFile("src/sokol/sokol.c", &[_][]const u8{"-ObjC"});
         exe.linkFramework("MetalKit");
         exe.linkFramework("Metal");
         exe.linkFramework("Cocoa");
         exe.linkFramework("QuartzCore");
         exe.linkFramework("AudioToolbox");
-    }
-    else {
+    } else {
         exe.addCSourceFile("src/sokol/sokol.c", &[_][]const u8{});
         if (exe.target.isLinux()) {
             exe.linkSystemLibrary("X11");
@@ -19,8 +17,7 @@ fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
             exe.linkSystemLibrary("Xcursor");
             exe.linkSystemLibrary("GL");
             exe.linkSystemLibrary("asound");
-        }
-        else if (exe.target.isWindows()) {
+        } else if (exe.target.isWindows()) {
             exe.linkSystemLibrary("kernel32");
             exe.linkSystemLibrary("user32");
             exe.linkSystemLibrary("gdi32");
@@ -33,7 +30,7 @@ fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
 
 pub fn build(b: *bld.Builder) void {
     const exe = b.addExecutable("pacman", "src/pacman.zig");
-    addSokol(b, exe) catch unreachable;
+    addSokol(exe) catch unreachable;
     exe.setBuildMode(b.standardReleaseOptions());
     exe.addPackagePath("sokol", "src/sokol/sokol.zig");
     exe.install();
