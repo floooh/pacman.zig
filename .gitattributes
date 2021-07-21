@@ -1,0 +1,4 @@
+src/sokol/*.h linguist-vendored
+src/sokol/*.c linguist-vendored
+
+
