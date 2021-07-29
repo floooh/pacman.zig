@@ -1731,7 +1731,8 @@ fn gameUpdateSprites() void {
                     // when inside the ghost house, show the normal ghost images
                     // (FIXME: ghost's inside the ghost house also show the
                     // frightened appearance when Pacman has eaten an energizer pill)
-                    spriteImageGhostFrightened(ghost.type, since(ghost.frightened), levelSpec(state.game.round).fright_ticks - 60);
+                    const fright_ticks = levelSpec(state.game.round).fright_ticks;
+                    spriteImageGhostFrightened(ghost.type, since(ghost.frightened), if (fright_ticks > 60) (fright_ticks - 60) else 0);
                 },
                 else => {
                     // show the regular ghost sprite image, the ghost's
