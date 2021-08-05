@@ -1,9 +1,8 @@
 const bld = @import("std").build;
 
-fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
+fn addSokol(exe: *bld.LibExeObjStep) void {
     exe.linkLibC();
     if (exe.target.isDarwin()) {
-        b.env_map.put("ZIG_SYSTEM_LINKER_HACK", "1") catch unreachable;
         exe.addCSourceFile("src/sokol/sokol.c", &[_][]const u8 { "-ObjC" });
         exe.linkFramework("MetalKit");
         exe.linkFramework("Metal");
@@ -33,7 +32,7 @@ fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
 
 pub fn build(b: *bld.Builder) void {
     const exe = b.addExecutable("pacman", "src/pacman.zig");
-    addSokol(b, exe) catch unreachable;
+    addSokol(exe);
     exe.setBuildMode(b.standardReleaseOptions());
     exe.addPackagePath("sokol", "src/sokol/sokol.zig");
     exe.install();
