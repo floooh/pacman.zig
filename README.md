@@ -7,7 +7,8 @@ Zig bindings for the sokol headers are here: https://github.com/floooh/sokol-zig
 
 Zig installation: https://github.com/ziglang/zig/wiki/Install-Zig-from-a-Package-Manager
 
-Tested with Zig 0.8.0
+The main branch works with zig 0.8.0, for the current zig dev version switch to 
+the branch ```zig-0.9.0```
 
 ```
 > git clone https://github.com/floooh/pacman.zig
