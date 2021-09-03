@@ -22,7 +22,7 @@ const DbgDoubleSpeed = false;       // set to true to speed up game
 const DbgGodMode = false;           // set to true to make Pacman invulnerable
 
 // misc constants
-const TickDurationNS = if (DbgDoubleSpeed) 8_333_33 else 16_666_667;
+const TickDurationNS = if (DbgDoubleSpeed) 8_333_333 else 16_666_667;
 const MaxFrameTimeNS = 33_333_333.0;    // max duration of a frame in nanoseconds
 const TickToleranceNS = 1_000_000;      // max time tolerance of a game tick in nanoseconds
 const FadeTicks = 30;                   // fade in/out duration in game ticks
