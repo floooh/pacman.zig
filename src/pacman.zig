@@ -1695,7 +1695,7 @@ fn gameUpdateSprites() void {
 
     // update ghost sprites
     // FIXME: Zig doesn't allow a const pointer in the loop?
-    for (state.game.ghosts) |*ghost, i| {
+    for (state.game.ghosts) |*ghost| {
         var spr = spriteGhost(ghost.type);
         if (spr.enabled) {
             spr.pos = actorToSpritePos(ghost.actor.pos);
