@@ -3,13 +3,14 @@
 //
 //  https://github.com/floooh/pacman.c/blob/main/pacman.c
 //
-const sg     = @import("sokol").gfx;
-const sapp   = @import("sokol").app;
-const sgapp  = @import("sokol").app_gfx_glue;
-const stm    = @import("sokol").time;
-const saudio = @import("sokol").audio;
 const assert = @import("std").debug.assert;
 const math   = @import("std").math;
+const sokol  = @import("sokol");
+const sg     = sokol.gfx;
+const sapp   = sokol.app;
+const sgapp  = sokol.app_gfx_glue;
+const stm    = sokol.time;
+const saudio = sokol.audio;
 
 // debugging and config options
 const AudioVolume = 0.5;
