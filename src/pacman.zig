@@ -235,7 +235,7 @@ const SoundFunc = fn(usize) void;
 const SoundDesc = struct {
     func: ?SoundFunc = null,    // optional pointer to sound effect callback if this is a procedural sound
     dump: ?[]const u32 = null,  // optional register dump data slice
-    voice: [NumVoices]bool = [_]bool{false} ** NumVoices,
+    voice: [NumVoices]bool = .{false} ** NumVoices,
 };
 
 // a sound 'hardware voice' (of a Namco WSG emulation)
@@ -255,7 +255,7 @@ const Sound = struct {
     dump: ?[]const u32 = null,  // optional register dump data
     num_ticks: u32 = 0,         // sound effect length in ticks (only for register dump sounds)
     stride: u32 = 0,            // register data stride for multivoice dumps (1,2 or 3)
-    voice: [NumVoices]bool = [_]bool{false} ** NumVoices,
+    voice: [NumVoices]bool = .{false} ** NumVoices,
 };
 
 // all mutable state is in a single nested global
@@ -284,7 +284,7 @@ const State = struct {
     
     game: struct {
         pacman: Pacman = .{},
-        ghosts: [NumGhosts]Ghost = [_]Ghost{.{}} ** NumGhosts,
+        ghosts: [NumGhosts]Ghost = .{.{}} ** NumGhosts,
 
         xorshift:           u32 = 0x12345678,   // xorshift random-number-generator state
         score:              u32 = 0,
@@ -314,8 +314,8 @@ const State = struct {
     } = .{},
 
     audio: struct {
-        voices: [NumVoices]Voice = [_]Voice{.{}} ** NumVoices,
-        sounds: [NumSounds]Sound = [_]Sound{.{}} ** NumSounds,
+        voices: [NumVoices]Voice = .{.{}} ** NumVoices,
+        sounds: [NumSounds]Sound = .{.{}} ** NumSounds,
         voice_tick_accum: i32 = 0,
         voice_tick_period: i32 = 0,
         sample_duration_ns: i32 = 0,
@@ -331,8 +331,8 @@ const State = struct {
         fade: u8 = 0xFF,
 
         // 'hardware sprites' (meh, array default initialization sure looks awkward...)
-        sprites: [NumSprites]Sprite = [_]Sprite{.{}} ** NumSprites,
-        debug_markers: [NumDebugMarkers]DebugMarker = [_]DebugMarker{.{}} ** NumDebugMarkers,
+        sprites: [NumSprites]Sprite = .{.{}} ** NumSprites,
+        debug_markers: [NumDebugMarkers]DebugMarker = .{.{}} ** NumDebugMarkers,
 
         // number of valid vertices in data.vertices
         num_vertices: u32 = 0,
