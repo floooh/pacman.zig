@@ -771,9 +771,9 @@ fn spriteFruit() *Sprite {
 
 // set sprite image to animated pacman
 fn spriteImagePacman(dir: Dir, tick: u32) void {
-    const tiles = [2][4]u8 {
-        [_]u8 { 44, 46, 48, 46 }, // horizontal (needs flipx)
-        [_]u8 { 45, 47, 48, 47 }  // vertical (needs flipy)
+    const tiles = [2][4]u8{
+        .{ 44, 46, 48, 46 }, // horizontal (needs flipx)
+        .{ 45, 47, 48, 47 }  // vertical (needs flipy)
     };
     const phase = (tick / 4) & 3;
     var spr = spritePacman();
@@ -796,11 +796,11 @@ fn spriteImagePacmanDeath(tick: u32) void {
 
 // set sprite image to animated ghost
 fn spriteImageGhost(ghost_type: GhostType, dir: Dir, tick: u32) void {
-    const tiles = [4][2]u8 {
-        [_]u8 { 32, 33 },   // right
-        [_]u8 { 34, 35 },   // down
-        [_]u8 { 36, 37 },   // left
-        [_]u8 { 38, 39 },   // up
+    const tiles = [4][2]u8{
+        .{ 32, 33 },   // right
+        .{ 34, 35 },   // down
+        .{ 36, 37 },   // left
+        .{ 38, 39 },   // up
     };
     const phase = (tick / 8) & 1;
     var spr = spriteGhost(ghost_type);
@@ -810,7 +810,7 @@ fn spriteImageGhost(ghost_type: GhostType, dir: Dir, tick: u32) void {
 
 // set sprite image to frightened ghost
 fn spriteImageGhostFrightened(ghost_type: GhostType, tick: u32, blinking_tick: u32) void {
-    const tiles = [2]u8 { 28, 29 };
+    const tiles = [2]u8{ 28, 29 };
     const phase = (tick / 4) & 1;
     var spr = spriteGhost(ghost_type);
     spr.tile = tiles[phase];
@@ -827,7 +827,7 @@ fn spriteImageGhostFrightened(ghost_type: GhostType, tick: u32, blinking_tick: u
 // images but with a different color code which makes
 // only the eyes visible
 fn spriteImageGhostEyes(ghost_type: GhostType, dir: Dir) void {
-    const tiles = [4]u8 { 32, 34, 36, 38 };
+    const tiles = [4]u8{ 32, 34, 36, 38 };
     var spr = spriteGhost(ghost_type);
     spr.tile = tiles[@enumToInt(dir)];
     spr.color = ColorCodeEyes;
