@@ -419,7 +419,7 @@ fn equal(v0: ivec2, v1: ivec2) bool {
 }
 
 // test if two ivec2 are nearly equal
-fn nearEqual(v0: ivec2, v1: ivec2, tolerance: i16) bool {
+fn nearEqual(tolerance: i16, v0: ivec2, v1: ivec2) bool {
     const d = v1 - v0;
     // use our own sloppy abs(), math.absInt() can return a runtime error
     const a: ivec2 = .{
@@ -697,7 +697,7 @@ fn isRedZone(tile_pos: ivec2) bool {
 
 // test if movement from a pixel position to a wanted position is possible,
 // allow_cornering is Pacman's feature to take a diagonal shortcut around corners
-fn canMove(pixel_pos: ivec2, wanted_dir: Dir, allow_cornering: bool) bool {
+fn canMove(wanted_dir: Dir, allow_cornering: bool, pixel_pos: ivec2) bool {
     const dist_mid = distToTileMid(pixel_pos);
     const dir_vec = dirToVec(wanted_dir);
 
@@ -720,7 +720,7 @@ fn canMove(pixel_pos: ivec2, wanted_dir: Dir, allow_cornering: bool) bool {
 }
 
 // compute a new pixel position along a direction (without blocking check)
-fn move(pixel_pos: ivec2, dir: Dir, allow_cornering: bool) ivec2 {
+fn move(dir: Dir, allow_cornering: bool, pixel_pos: ivec2) ivec2 {
     const dir_vec = dirToVec(dir);
     var pos = pixel_pos + dir_vec;
 
@@ -858,7 +858,7 @@ fn gameTick() void {
     if (now(state.game.round_started)) {
         state.game.freeze &= ~FreezeReady;
         // clear the READY! message
-        gfxColorText(.{11,20}, ColorCodeDot, "      ");
+        gfxColorText(ColorCodeDot, "      ", .{11,20});
         soundWeeooh();
     }
 
@@ -906,7 +906,7 @@ fn gameTick() void {
         startAfter(&state.game.ready_started, RoundWonTicks);
     }
     if (now(state.game.game_over)) {
-        gfxColorText(.{9,20}, 1, "GAME  OVER");
+        gfxColorText(1, "GAME  OVER", .{9,20});
         inputDisable();
         startAfter(&state.gfx.fadeout, GameOverTicks);
         startAfter(&state.intro.started, GameOverTicks + FadeTicks);
@@ -951,18 +951,18 @@ fn gameUpdateActors() void {
         const wanted_dir = inputDir(actor.dir);
         const allow_cornering = true;
         // look ahead to check if wanted direction is blocked
-        if (canMove(actor.pos, wanted_dir, allow_cornering)) {
+        if (canMove(wanted_dir, allow_cornering, actor.pos)) {
             actor.dir = wanted_dir;
         }
         // move into the selected direction
-        if (canMove(actor.pos, actor.dir, allow_cornering)) {
-            actor.pos = move(actor.pos, actor.dir, allow_cornering);
+        if (canMove(actor.dir, allow_cornering, actor.pos)) {
+            actor.pos = move(actor.dir, allow_cornering, actor.pos);
             actor.anim_tick += 1;
         }
         // eat dot or energizer pill?
         const pacman_tile_pos = pixelToTilePos(actor.pos);
         if (isDot(pacman_tile_pos)) {
-            gfxTile(pacman_tile_pos, TileCodeSpace);
+            gfxTile(TileCodeSpace, pacman_tile_pos);
             state.game.score += 1;
             start(&state.game.dot_eaten);
             start(&state.game.force_leave_house);
@@ -970,7 +970,7 @@ fn gameUpdateActors() void {
             gameUpdateGhostHouseDotCounters();
         }
         if (isPill(pacman_tile_pos)) {
-            gfxTile(pacman_tile_pos, TileCodeSpace);
+            gfxTile(TileCodeSpace, pacman_tile_pos);
             state.game.score += 5;
             start(&state.game.pill_eaten);
             state.game.num_ghosts_eaten = 0;
@@ -1041,8 +1041,8 @@ fn gameUpdateActors() void {
         while (i < num_move_ticks): (i += 1) {
             const force_move = gameUpdateGhostDir(ghost);
             const allow_cornering = false;
-            if (force_move or canMove(ghost.actor.pos, ghost.actor.dir, allow_cornering)) {
-                ghost.actor.pos = move(ghost.actor.pos, ghost.actor.dir, allow_cornering);
+            if (force_move or canMove(ghost.actor.dir, allow_cornering, ghost.actor.pos)) {
+                ghost.actor.pos = move(ghost.actor.dir, allow_cornering, ghost.actor.pos);
                 ghost.actor.anim_tick += 1;
             }
         }
@@ -1060,14 +1060,14 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
             // target position in front of the ghost house has been reached, then
             // switch into ENTERHOUSE state. Since ghosts in eye state move faster
             // than one pixel per tick, do a fuzzy comparison with the target pos
-            if (nearEqual(ghost.actor.pos, .{ AntePortasX, AntePortasY}, 1)) {
+            if (nearEqual(1, ghost.actor.pos, .{ AntePortasX, AntePortasY})) {
                 new_state = .EnterHouse;
             }
         },
         .EnterHouse => {
             // Ghosts that enter the ghost house during the gameplay loop immediately
             // leave the house again after reaching their target position inside the house.
-            if (nearEqual(ghost.actor.pos, ghostHouseTargetPos(ghost.type), 1)) {
+            if (nearEqual(1, ghost.actor.pos, ghostHouseTargetPos(ghost.type))) {
                 new_state = .LeaveHouse;
             }
         },
@@ -1438,10 +1438,10 @@ fn gameInit() void {
 
     // draw the playfield and PLAYER ONE READY! message
     gfxClear(TileCodeSpace, ColorCodeDot);
-    gfxColorText(.{9,0}, ColorCodeDefault, "HIGH SCORE");
+    gfxColorText(ColorCodeDefault, "HIGH SCORE", .{9,0});
     gameInitPlayfield();
-    gfxColorText(.{9,14}, 5, "PLAYER ONE");
-    gfxColorText(.{11,20}, 9, "READY!");
+    gfxColorText(5, "PLAYER ONE", .{9,14});
+    gfxColorText(9, "READY!", .{11,20});
 }
 
 // initialize the playfield background tiles
@@ -1495,7 +1495,7 @@ fn gameInitPlayfield() void {
     while (y < DisplayTilesY-2): (y += 1) {
         var x: i16 = 0;
         while (x < DisplayTilesX): ({ x += 1; i += 1; }) {
-            gfxTile(.{x,y}, t[tiles[i] & 127]);
+            gfxTile(t[tiles[i] & 127], .{x,y});
         }
         // skip newline
         if (tiles[i] == '\r') {
@@ -1507,8 +1507,8 @@ fn gameInitPlayfield() void {
     }
 
     // ghost house door color
-    gfxColor(.{13,15}, 0x18);
-    gfxColor(.{14,15}, 0x18);
+    gfxColor(0x18, .{13,15});
+    gfxColor(0x18, .{14,15});
 }
 
 // initialize a new game round
@@ -1516,7 +1516,7 @@ fn gameRoundInit() void {
     gfxClearSprites();
 
     // clear the PLAYER ONE text
-    gfxColorText(.{9,14}, ColorCodeDot, "          ");
+    gfxColorText(ColorCodeDot, "          ", .{9,14});
 
     // if a new round was started because Pacman had won (eaten all dots),
     // redraw the playfield and reset the global dot counter
@@ -1544,7 +1544,7 @@ fn gameRoundInit() void {
     state.game.num_ghosts_eaten = 0;
     gameInitTriggers();
 
-    gfxColorText(.{11,20}, 9, "READY!");
+    gfxColorText(9, "READY!", .{11,20});
 
     // the force-house trigger forces ghosts out of the house if Pacman
     // hasn't been eating dots for a while
@@ -1611,19 +1611,19 @@ fn gameRoundInit() void {
 // update dynamic background tiles
 fn gameUpdateTiles() void {
     // print score and hiscore
-    gfxColorScore(.{6,1}, ColorCodeDefault, state.game.score);
+    gfxColorScore(ColorCodeDefault, state.game.score, .{6,1});
     if (state.game.hiscore > 0) {
-        gfxColorScore(.{16,1}, ColorCodeDefault, state.game.hiscore);
+        gfxColorScore(ColorCodeDefault, state.game.hiscore, .{16,1});
     }
 
     // update the energizer pill state (blinking/non-blinking)
     const pill_pos = [NumPills]ivec2 { .{1,6}, .{26,6}, .{1,26}, .{26,26} };
     for (pill_pos) |pos| {
         if (0 != state.game.freeze) {
-            gfxColor(pos, ColorCodeDot);
+            gfxColor(ColorCodeDot, pos);
         }
         else {
-            gfxColor(pos, if (0 != (state.timing.tick & 8)) ColorCodeDot else ColorCodeBlank);
+            gfxColor(if (0 != (state.timing.tick & 8)) ColorCodeDot else ColorCodeBlank, pos);
         }
     }
 
@@ -1637,7 +1637,7 @@ fn gameUpdateTiles() void {
         var i: i16 = 0;
         while (i < NumLives): (i += 1) {
             const color: u8 = if (i < state.game.num_lives) ColorCodePacman else ColorCodeBlank;
-            gfxColorTileQuad(.{2+2*i,34}, color, TileCodeLife);
+            gfxColorTileQuad(color, TileCodeLife, .{2+2*i,34});
         }
     }
 
@@ -1648,7 +1648,7 @@ fn gameUpdateTiles() void {
         while (i <= state.game.round): (i += 1) {
             if (i >= 0) {
                 const fruit = levelSpec(@intCast(u32,i)).bonus_fruit;
-                gfxColorTileQuad(.{x,34}, fruitColorCode(fruit), fruitTileCode(fruit));
+                gfxColorTileQuad(fruitColorCode(fruit), fruitTileCode(fruit), .{x,34});
                 x -= 2;
             }
         }
@@ -1769,13 +1769,13 @@ fn introTick() void {
         start(&state.gfx.fadein);
         inputEnable();
         gfxClear(TileCodeSpace, ColorCodeDefault);
-        gfxText(.{3,0}, "1UP   HIGH SCORE   2UP");
-        gfxColorScore(.{6,1}, ColorCodeDefault, 0);
+        gfxText("1UP   HIGH SCORE   2UP", .{3,0});
+        gfxColorScore(ColorCodeDefault, 0, .{6,1});
         if (state.game.hiscore > 0) {
-            gfxColorScore(.{16,1}, ColorCodeDefault, state.game.hiscore);
+            gfxColorScore(ColorCodeDefault, state.game.hiscore, .{16,1});
         }
-        gfxText(.{7,5}, "CHARACTER / NICKNAME");
-        gfxText(.{3,35}, "CREDIT 0");
+        gfxText("CHARACTER / NICKNAME", .{7,5});
+        gfxText("CREDIT 0", .{3,35});
     }
 
     // draw the animated 'ghost... name... nickname' lines
@@ -1789,19 +1789,19 @@ fn introTick() void {
         // 2*3 tiles ghost image
         delay += 30;
         if (afterOnce(state.intro.started, delay)) {
-            gfxColorTile(.{4,y+0}, color, TileCodeGhost+0); gfxColorTile(.{5,y+0}, color, TileCodeGhost+1);
-            gfxColorTile(.{4,y+1}, color, TileCodeGhost+2); gfxColorTile(.{5,y+1}, color, TileCodeGhost+3);
-            gfxColorTile(.{4,y+2}, color, TileCodeGhost+4); gfxColorTile(.{5,y+2}, color, TileCodeGhost+5);
+            gfxColorTile(color, TileCodeGhost+0, .{4,y+0}); gfxColorTile(color, TileCodeGhost+1, .{5,y+0});
+            gfxColorTile(color, TileCodeGhost+2, .{4,y+1}); gfxColorTile(color, TileCodeGhost+3, .{5,y+1});
+            gfxColorTile(color, TileCodeGhost+4, .{4,y+2}); gfxColorTile(color, TileCodeGhost+5, .{5,y+2});
         }
         // after 1 second, the name of the ghost
         delay += 60;
         if (afterOnce(state.intro.started, delay)) {
-            gfxColorText(.{7,y+1}, color, name);
+            gfxColorText(color, name, .{7,y+1});
         }
         // after 0.5 seconds, the nickname of the ghost
         delay += 30;
         if (afterOnce(state.intro.started, delay)) {
-            gfxColorText(.{17,y+1}, color, nicknames[i]);
+            gfxColorText(color, nicknames[i], .{17,y+1});
         }
     }
 
@@ -1809,20 +1809,20 @@ fn introTick() void {
     // o 50 PTS
     delay += 60;
     if (afterOnce(state.intro.started, delay)) {
-        gfxColorTile(.{10,24}, ColorCodeDot, TileCodeDot);
-        gfxText(.{12,24}, "10 \x5D\x5E\x5F");
-        gfxColorTile(.{10,26}, ColorCodeDot, TileCodePill);
-        gfxText(.{12,26}, "50 \x5D\x5E\x5F");
+        gfxColorTile(ColorCodeDot, TileCodeDot, .{10,24});
+        gfxText("10 \x5D\x5E\x5F", .{12,24});
+        gfxColorTile(ColorCodeDot, TileCodePill, .{10,26});
+        gfxText("50 \x5D\x5E\x5F", .{12,26});
     }
 
     // blinking "press any key" text
     delay += 60;
     if (after(state.intro.started, delay)) {
         if (0 != (since(state.intro.started) & 0x20)) {
-            gfxColorText(.{3,31}, 3, "                       ");
+            gfxColorText(3, "                       ", .{3,31});
         }
         else {
-            gfxColorText(.{3,31}, 3, "PRESS ANY KEY TO START!");
+            gfxColorText(3, "PRESS ANY KEY TO START!", .{3,31});
         }
     }
 
@@ -1878,17 +1878,23 @@ fn gfxTileAt(pos: ivec2) u8 {
     return data.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])];
 }
 
-fn gfxTile(pos: ivec2, tile_code: u8) void {
+// TODO we flip the arguments here due to a bug in LLVM as reported here:
+// https://github.com/ziglang/zig/issues/10030
+//
+// So a function taking ivec2 (@Vector) as an argument, always put the
+// vectors last:
+// fn gfxTile(ivec2, u8) => fn gfxTile(u8, ivec2)
+fn gfxTile(tile_code: u8, pos: ivec2) void {
     data.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = tile_code;
 }
 
-fn gfxColor(pos: ivec2, color_code: u8) void {
+fn gfxColor(color_code: u8, pos: ivec2) void {
     data.color_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = color_code;
 }
 
-fn gfxColorTile(pos: ivec2, color_code: u8, tile_code: u8) void {
-    gfxTile(pos, tile_code);
-    gfxColor(pos, color_code);
+fn gfxColorTile(color_code: u8, tile_code: u8, pos: ivec2) void {
+    gfxTile(tile_code, pos);
+    gfxColor(color_code, pos);
 }
 
 fn gfxToNamcoChar(c: u8) u8 {
@@ -1902,20 +1908,20 @@ fn gfxToNamcoChar(c: u8) u8 {
     };
 }
 
-fn gfxChar(pos: ivec2, chr: u8) void {
-    gfxTile(pos, gfxToNamcoChar(chr));
+fn gfxChar(chr: u8, pos: ivec2) void {
+    gfxTile(gfxToNamcoChar(chr), pos);
 }
 
-fn gfxColorChar(pos: ivec2, color_code: u8, chr: u8) void {
-    gfxChar(pos, chr);
-    gfxColor(pos, color_code);
+fn gfxColorChar(color_code: u8, chr: u8, pos: ivec2) void {
+    gfxChar(chr, pos);
+    gfxColor(color_code, pos);
 }
 
-fn gfxColorText(pos: ivec2, color_code: u8, text: []const u8) void {
+fn gfxColorText(color_code: u8, text: []const u8, pos: ivec2) void {
     var p = pos;
     for (text) |chr| {
         if (p[0] < DisplayTilesX) {
-            gfxColorChar(p, color_code, chr);
+            gfxColorChar(color_code, chr, p);
             p[0] += 1;
         }
         else {
@@ -1924,11 +1930,11 @@ fn gfxColorText(pos: ivec2, color_code: u8, text: []const u8) void {
     }
 }
 
-fn gfxText(pos: ivec2, text: []const u8) void {
+fn gfxText(text: []const u8, pos: ivec2) void {
     var p = pos;
     for (text) |chr| {
         if (p[0] < DisplayTilesX) {
-            gfxChar(p, chr);
+            gfxChar(chr, p);
             p[0] += 1;
         }
         else {
@@ -1941,17 +1947,17 @@ fn gfxText(pos: ivec2, text: []const u8) void {
 // scores are /10, the last printed number is always 0, 
 // a zero-score will print as '00' (this is the same as on
 // the Pacman arcade machine)
-fn gfxColorScore(pos: ivec2, color_code: u8, score: u32) void {
+fn gfxColorScore(color_code: u8, score: u32, pos: ivec2) void {
     var p = pos;
     var s = score;
-    gfxColorChar(p, color_code, '0');
+    gfxColorChar(color_code, '0', p);
     p[0] -= 1;
     var digit: u32 = 0;
     while (digit < 8): (digit += 1) {
         // FIXME: should this narrowing cast not be necessary?
         const chr: u8 = @intCast(u8, s % 10) + '0';
         if (validTilePos(p)) {
-            gfxColorChar(p, color_code, chr);
+            gfxColorChar(color_code, chr, p);
             p[0] -= 1;
             s /= 10;
             if (0 == s) {
@@ -1968,13 +1974,13 @@ fn gfxColorScore(pos: ivec2, color_code: u8, score: u32) void {
 // This is (for instance) used to render the current "lives" and fruit
 // symbols at the lower border.
 //
-fn gfxColorTileQuad(pos: ivec2, color_code: u8, tile_code: u8) void {
+fn gfxColorTileQuad(color_code: u8, tile_code: u8, pos: ivec2) void {
     var yy: i16 = 0;
     while (yy < 2): (yy += 1) {
         var xx: i16 = 0;
         while (xx < 2): (xx += 1) {
             const t: u8 = tile_code + @intCast(u8,yy)*2 + (1 - @intCast(u8,xx));
-            gfxColorTile(pos + ivec2{xx,yy}, color_code, t);
+            gfxColorTile(color_code, t, pos + ivec2{xx,yy});
         }
     }
 }
@@ -1995,7 +2001,7 @@ fn gfxFruitScore(fruit: Fruit) void {
     };
     var i: usize = 0;
     while (i < 4): (i += 1) {
-        gfxColorTile(.{12+@intCast(i16,i),20}, color_code, tiles[i]);
+        gfxColorTile(color_code, tiles[i], .{12+@intCast(i16,i),20});
     }
 }
 
