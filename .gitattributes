@@ -1,3 +1,2 @@
+*.zig text eol=lf
 src/sokol/* linguist-vendored
-
-
