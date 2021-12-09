@@ -124,7 +124,22 @@ const FreezeDead:       u8 = (1<<3);
 const FreezeWon:        u8 = (1<<4);
 
 // a 2D vector for pixel- and tile-coordinates
-const ivec2 = @Vector(2,i16);
+const ivec2 = struct {
+    x: i16 = 0,
+    y: i16 = 0,
+    
+    fn add(v0: ivec2, v1: ivec2) ivec2 {
+        return .{ .x = v0.x + v1.x, .y = v0.y + v1.y };
+    }
+    
+    fn sub(v0: ivec2, v1: ivec2) ivec2 {
+        return .{ .x = v0.x - v1.x, .y = v0.y - v1.y };
+    }
+    
+    fn mul(v0: ivec2, v1: ivec2) ivec2 {
+        return .{ .x = v0.x * v1.x, .y = v0.y * v1.y };
+    }
+};
 
 // the game can be either in intro- or game-mode
 const GameMode = enum {
@@ -176,7 +191,7 @@ const GhostState = enum {
 // common ghost and Pacman state
 const Actor = struct {
     dir:        Dir = .Right,
-    pos:        ivec2 = ivec2{0,0},
+    pos:        ivec2 = .{},
     anim_tick:  u32 = 0,
 };
 
@@ -185,7 +200,7 @@ const Ghost = struct {
     actor:          Actor = .{},
     type:           GhostType = .Blinky,
     next_dir:       Dir = .Right,
-    target_pos:     ivec2 = ivec2{0,0},
+    target_pos:     ivec2 = .{},
     state:          GhostState = .None,
     frightened:     Trigger = .{},
     eaten:          Trigger = .{},
@@ -211,7 +226,7 @@ const Sprite = struct {
     color:      u8 = 0,
     flipx:      bool = false,
     flipy:      bool = false,
-    pos:        ivec2 = ivec2{0,0},
+    pos:        ivec2 = .{},
 };
 
 // a 'debug marker' for visualizing ghost targets
@@ -219,7 +234,7 @@ const DebugMarker = struct {
     enabled:    bool = false,
     tile:       u8 = 0,
     color:      u8 = 0,
-    tile_pos:   ivec2 = ivec2{0,0},
+    tile_pos:   ivec2 = .{},
 };
 
 // vertex-structure for rendering background tiles and sprites
@@ -415,46 +430,46 @@ fn xorshift32() u32 {
 
 // test if two ivec2 are equal
 fn equal(v0: ivec2, v1: ivec2) bool {
-    return (v0[0] == v1[0]) and (v0[1] == v1[1]);
+    return (v0.x == v1.x) and (v0.y == v1.y);
 }
 
 // test if two ivec2 are nearly equal
 fn nearEqual(v0: ivec2, v1: ivec2, tolerance: i16) bool {
-    const d = v1 - v0;
+    const d = ivec2.sub(v1, v0);
     // use our own sloppy abs(), math.absInt() can return a runtime error
     const a: ivec2 = .{
-        if (d[0] < 0) -d[0] else d[0],
-        if (d[1] < 0) -d[1] else d[1]
+        .x = if (d.x < 0) -d.x else d.x,
+        .y = if (d.y < 0) -d.y else d.y
     };
-    return (a[0] <= tolerance) and (a[1] <= tolerance);
+    return (a.x <= tolerance) and (a.y <= tolerance);
 }
 
 // squared distance between two ivec2
 fn squaredDistance(v0: ivec2, v1: ivec2) i16 {
-    const d = v1 - v0;
-    return d[0]*d[0] + d[1]*d[1];
+    const d = ivec2.sub(v1, v0);
+    return d.x*d.x + d.y*d.y;
 }
 
 // return the pixel difference from a pixel position to the next tile midpoint
 fn distToTileMid(pixel_pos: ivec2) ivec2 {
-    return .{ TileWidth/2 - @mod(pixel_pos[0], TileWidth), TileHeight/2 - @mod(pixel_pos[1], TileHeight) };
+    return .{ .x = TileWidth/2 - @mod(pixel_pos.x, TileWidth), .y = TileHeight/2 - @mod(pixel_pos.y, TileHeight) };
 }
 
 // convert a pixel position into a tile position
 fn pixelToTilePos(pixel_pos: ivec2) ivec2 {
-    return .{ @divTrunc(pixel_pos[0], TileWidth), @divTrunc(pixel_pos[1], TileHeight) };
+    return .{ .x = @divTrunc(pixel_pos.x, TileWidth), .y = @divTrunc(pixel_pos.y, TileHeight) };
 }
 
 // return true if a tile position is valid (inside visible area)
 fn validTilePos(tile_pos: ivec2) bool {
-    return (tile_pos[0] >= 0) and (tile_pos[0] < DisplayTilesX) and (tile_pos[1] >= 0) and (tile_pos[1] < DisplayTilesY);
+    return (tile_pos.x >= 0) and (tile_pos.x < DisplayTilesX) and (tile_pos.y >= 0) and (tile_pos.y < DisplayTilesY);
 }
 
 // return tile pos clamped to playfield borders
 fn clampedTilePos(tile_pos: ivec2) ivec2 {
     return .{
-        math.clamp(tile_pos[0], 0, DisplayTilesX-1),
-        math.clamp(tile_pos[1], 3, DisplayTilesY-3)
+        .x = math.clamp(tile_pos.x, 0, DisplayTilesX-1),
+        .y = math.clamp(tile_pos.y, 3, DisplayTilesY-3)
     };
 }
 
@@ -560,10 +575,10 @@ fn reverseDir(dir: Dir) Dir {
 // return a vector for a given direction
 fn dirToVec(dir: Dir) ivec2 {
     return switch (dir) {
-        .Right => .{  1,  0 },
-        .Down  => .{  0,  1 },
-        .Left  => .{ -1,  0 },
-        .Up    => .{  0, -1 }
+        .Right => .{ .x= 1, .y= 0 },
+        .Down  => .{ .x= 0, .y= 1 },
+        .Left  => .{ .x=-1, .y= 0 },
+        .Up    => .{ .x= 0, .y=-1 }
     };
 }
 
@@ -614,7 +629,7 @@ fn fruitSpriteCode(fruit: Fruit) u8 {
 
 // convert an actor pos (origin at center) to a sprite pos (origin at topleft)
 fn actorToSpritePos(actorPos: ivec2) ivec2 {
-    return .{ actorPos[0] - SpriteWidth/2, actorPos[1] - SpriteHeight/2 };
+    return .{ .x = actorPos.x - SpriteWidth/2, .y = actorPos.y - SpriteHeight/2 };
 }
 
 // get pointer to ghost by type
@@ -643,20 +658,20 @@ fn clyde() *Ghost {
 // (same as startingPos except Blinky's)
 fn ghostHouseTargetPos(t: GhostType) ivec2 {
     return switch (t) {
-        .Blinky => .{ 14*8, 17*8 + 4 },
-        .Pinky  => .{ 14*8, 17*8 + 4 },
-        .Inky   => .{ 12*8, 17*8 + 4 },
-        .Clyde  => .{ 16*8, 17*8 + 4 },
+        .Blinky => .{ .x=14*8, .y=17*8 + 4 },
+        .Pinky  => .{ .x=14*8, .y=17*8 + 4 },
+        .Inky   => .{ .x=12*8, .y=17*8 + 4 },
+        .Clyde  => .{ .x=16*8, .y=17*8 + 4 },
     };
 }
 
 // ghost scatter target positions in tile coords
 fn scatterTargetPos(t: GhostType) ivec2 {
     return switch (t) {
-        .Blinky => .{ 25,  0 }, 
-        .Pinky  => .{  2,  0 },
-        .Inky   => .{ 27, 34 }, 
-        .Clyde  => .{  0, 34 },
+        .Blinky => .{ .x=25, .y= 0 }, 
+        .Pinky  => .{ .x= 2, .y= 0 },
+        .Inky   => .{ .x=27, .y=34 }, 
+        .Clyde  => .{ .x= 0, .y=34 },
     };
 }
 
@@ -686,13 +701,13 @@ fn isPill(tile_pos: ivec2) bool {
 
 // check if a tile position is inside the teleport tunnel
 fn isTunnel(tile_pos: ivec2) bool {
-    return (tile_pos[1] == 17) and ((tile_pos[0] <= 5) or (tile_pos[0] >= 22));
+    return (tile_pos.y == 17) and ((tile_pos.x <= 5) or (tile_pos.x >= 22));
 }
 
 // check if a tile position is inside one of the two "red zones" where 
 // ghost are not allowed to move upward
 fn isRedZone(tile_pos: ivec2) bool {
-    return (tile_pos[0] >= 11) and (tile_pos[0] <= 16) and ((tile_pos[1] ==14) or (tile_pos[1] == 26));
+    return (tile_pos.x >= 11) and (tile_pos.x <= 16) and ((tile_pos.y ==14) or (tile_pos.y == 26));
 }
 
 // test if movement from a pixel position to a wanted position is possible,
@@ -702,12 +717,12 @@ fn canMove(pixel_pos: ivec2, wanted_dir: Dir, allow_cornering: bool) bool {
     const dir_vec = dirToVec(wanted_dir);
 
     // distance to midpoint in move direction and perpendicular direction
-    const move_dist_mid = if (dir_vec[1] != 0) dist_mid[1] else dist_mid[0];
-    const perp_dist_mid = if (dir_vec[1] != 0) dist_mid[0] else dist_mid[1];
+    const move_dist_mid = if (dir_vec.y != 0) dist_mid.y else dist_mid.x;
+    const perp_dist_mid = if (dir_vec.y != 0) dist_mid.x else dist_mid.y;
 
     // look one tile ahead in movement direction
     const tile_pos = pixelToTilePos(pixel_pos);
-    const check_pos = clampedTilePos(tile_pos + dir_vec);
+    const check_pos = clampedTilePos(ivec2.add(tile_pos, dir_vec));
     const is_blocked = isBlockingTile(check_pos);
     if ((!allow_cornering and (0 != perp_dist_mid)) or (is_blocked and (0 == move_dist_mid))) {
         // way is blocked
@@ -722,27 +737,27 @@ fn canMove(pixel_pos: ivec2, wanted_dir: Dir, allow_cornering: bool) bool {
 // compute a new pixel position along a direction (without blocking check)
 fn move(pixel_pos: ivec2, dir: Dir, allow_cornering: bool) ivec2 {
     const dir_vec = dirToVec(dir);
-    var pos = pixel_pos + dir_vec;
+    var pos = ivec2.add(pixel_pos, dir_vec);
 
     // if cornering allowed, drag the position towards the center-line
     if (allow_cornering) {
         const dist_mid = distToTileMid(pos);
-        if (dir_vec[0] != 0) {
-            if (dist_mid[1] < 0)        { pos[1] -= 1; }
-            else if (dist_mid[1] > 0)   { pos[1] += 1; }
+        if (dir_vec.x != 0) {
+            if (dist_mid.y < 0)        { pos.y -= 1; }
+            else if (dist_mid.y > 0)   { pos.y += 1; }
         }
-        else if (dir_vec[1] != 0) {
-            if (dist_mid[0] < 0)        { pos[0] -= 1; }
-            else if (dist_mid[0] > 0)   { pos[0] += 1; }
+        else if (dir_vec.y != 0) {
+            if (dist_mid.x < 0)        { pos.x -= 1; }
+            else if (dist_mid.x > 0)   { pos.x += 1; }
         }
     }
 
     // wrap x position around (only possible inside teleport tunnel)
-    if (pos[0] < 0) {
-        pos[0] = DisplayPixelsX - 1;
+    if (pos.x < 0) {
+        pos.x = DisplayPixelsX - 1;
     }
-    else if (pos[0] >= DisplayPixelsX) {
-        pos[0] = 0;
+    else if (pos.x >= DisplayPixelsX) {
+        pos.x = 0;
     }
     return pos;
 }
@@ -858,7 +873,7 @@ fn gameTick() void {
     if (now(state.game.round_started)) {
         state.game.freeze &= ~FreezeReady;
         // clear the READY! message
-        gfxColorText(.{11,20}, ColorCodeDot, "      ");
+        gfxColorText(.{.x=11,.y=20}, ColorCodeDot, "      ");
         soundWeeooh();
     }
 
@@ -906,7 +921,7 @@ fn gameTick() void {
         startAfter(&state.game.ready_started, RoundWonTicks);
     }
     if (now(state.game.game_over)) {
-        gfxColorText(.{9,20}, 1, "GAME  OVER");
+        gfxColorText(.{.x=9,.y=20}, 1, "GAME  OVER");
         inputDisable();
         startAfter(&state.gfx.fadeout, GameOverTicks);
         startAfter(&state.intro.started, GameOverTicks + FadeTicks);
@@ -982,8 +997,8 @@ fn gameUpdateActors() void {
         }
         // check if Pacman eats the bonus fruit
         if (state.game.active_fruit != .None) {
-            const test_pos = pixelToTilePos(actor.pos + ivec2{TileWidth/2,0});
-            if (equal(test_pos, .{14,20})) {
+            const test_pos = pixelToTilePos(ivec2.add(actor.pos, .{.x=TileWidth/2,.y=0}));
+            if (equal(test_pos, .{.x=14,.y=20})) {
                 start(&state.game.fruit_eaten);
                 state.game.score += levelSpec(state.game.round).bonus_score;
                 gfxFruitScore(state.game.active_fruit);
@@ -1060,7 +1075,7 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
             // target position in front of the ghost house has been reached, then
             // switch into ENTERHOUSE state. Since ghosts in eye state move faster
             // than one pixel per tick, do a fuzzy comparison with the target pos
-            if (nearEqual(ghost.actor.pos, .{ AntePortasX, AntePortasY}, 1)) {
+            if (nearEqual(ghost.actor.pos, .{ .x=AntePortasX, .y=AntePortasY}, 1)) {
                 new_state = .EnterHouse;
             }
         },
@@ -1106,7 +1121,7 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
         },
         .LeaveHouse => {
             // ghosts immediately switch to scatter mode after leaving the ghost house
-            if (ghost.actor.pos[1] == AntePortasY) {
+            if (ghost.actor.pos.y == AntePortasY) {
                 new_state = .Scatter;
             }
         },
@@ -1177,14 +1192,14 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
                 .Pinky => {
                     // Pinky target is 4 tiles ahead of Pacman
                     // FIXME: does not reproduce 'diagonal overflow'
-                    ghost.target_pos = pm_pos + pm_dir * ivec2{4,4};
+                    ghost.target_pos = ivec2.add(pm_pos, ivec2.mul(pm_dir, .{.x=4,.y=4}));
                 },
                 .Inky => {
                     // Inky targets an extrapolated pos along a line two tiles
                     // ahead of Pacman through Blinky
                     const blinky_pos = pixelToTilePos(blinky().actor.pos);
-                    const d = (pm_pos + pm_dir * ivec2{2,2}) - blinky_pos;
-                    ghost.target_pos = blinky_pos + d * ivec2{2,2};
+                    const d = ivec2.sub(ivec2.add(pm_pos, ivec2.mul(pm_dir, .{.x=2,.y=2})), blinky_pos);
+                    ghost.target_pos = ivec2.add(blinky_pos, ivec2.mul(d, .{.x=2,.y=2}));
                 },
                 .Clyde => {
                     // if Clyde is far away from Pacman, he chases Pacman, 
@@ -1203,13 +1218,13 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
             // this has the effect that ghosts in frightened state 
             // move in a random direction at each intersection
             ghost.target_pos = .{
-                @intCast(i16, xorshift32() % DisplayTilesX),
-                @intCast(i16, xorshift32() % DisplayTilesY)
+                .x = @intCast(i16, xorshift32() % DisplayTilesX),
+                .y = @intCast(i16, xorshift32() % DisplayTilesY)
             };
         },
         .Eyes => {
             // move towards the ghost house door
-            ghost.target_pos = .{ 13, 14 };
+            ghost.target_pos = .{ .x=13, .y=14 };
         },
         else => {}
     }
@@ -1222,10 +1237,10 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
     switch (ghost.state) {
         .House => {
             // inside ghost house, just move up and down
-            if (ghost.actor.pos[1] <= 17*TileHeight) {
+            if (ghost.actor.pos.y <= 17*TileHeight) {
                 ghost.next_dir = .Down;
             }
-            else if (ghost.actor.pos[1] >= 18*TileHeight) {
+            else if (ghost.actor.pos.y >= 18*TileHeight) {
                 ghost.next_dir = .Up;
             }
             ghost.actor.dir = ghost.next_dir;
@@ -1235,21 +1250,21 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
         .LeaveHouse => {
             // navigate ghost out of the ghost house
             const pos = ghost.actor.pos;
-            if (pos[0] == AntePortasX) {
-                if (pos[1] > AntePortasY) {
+            if (pos.x == AntePortasX) {
+                if (pos.y > AntePortasY) {
                     ghost.next_dir = .Up;
                 }
             }
             else {
                 const mid_y: i16 = 17*TileHeight + TileHeight/2;
-                if (pos[1] > mid_y) {
+                if (pos.y > mid_y) {
                     ghost.next_dir = .Up;
                 }
-                else if (pos[1] < mid_y) {
+                else if (pos.y < mid_y) {
                     ghost.next_dir = .Down;
                 }
                 else {
-                    ghost.next_dir = if (pos[0] > AntePortasX) .Left else .Right;
+                    ghost.next_dir = if (pos.x > AntePortasX) .Left else .Right;
                 }
             }
             ghost.actor.dir = ghost.next_dir;
@@ -1261,16 +1276,16 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
             const pos = ghost.actor.pos;
             const tile_pos = pixelToTilePos(pos);
             const tgt_pos = ghostHouseTargetPos(ghost.type);
-            if (tile_pos[1] == 14) {
-                if (pos[0] != AntePortasX) {
-                    ghost.next_dir = if (pos[0] > AntePortasX) .Left else .Right;
+            if (tile_pos.y == 14) {
+                if (pos.x != AntePortasX) {
+                    ghost.next_dir = if (pos.x > AntePortasX) .Left else .Right;
                 }
                 else {
                     ghost.next_dir = .Down;
                 }
             }
-            else if (pos[1] == tgt_pos[1]) {
-                ghost.next_dir = if (pos[0] > tgt_pos[0]) .Left else .Right;
+            else if (pos.y == tgt_pos.y) {
+                ghost.next_dir = if (pos.x > tgt_pos.x) .Left else .Right;
             }
             ghost.actor.dir = ghost.next_dir;
             // force movement
@@ -1279,13 +1294,13 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
         else => {
             // scatter/chase/frightened: just head towards the current target point
             const dist_to_mid = distToTileMid(ghost.actor.pos);
-            if ((dist_to_mid[0] == 0) and (dist_to_mid[1] == 0)) {
+            if ((dist_to_mid.x == 0) and (dist_to_mid.y == 0)) {
                 // new direction is the previously computed next direction
                 ghost.actor.dir = ghost.next_dir;
 
                 // compute new next-direction
                 const dir_vec = dirToVec(ghost.actor.dir);
-                const lookahead_pos = pixelToTilePos(ghost.actor.pos) + dir_vec;
+                const lookahead_pos = ivec2.add(pixelToTilePos(ghost.actor.pos), dir_vec);
 
                 // try each direction and take the one that's closest to the target pos
                 const dirs = [_]Dir { .Up, .Left, .Down, .Right };
@@ -1296,7 +1311,7 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
                     if (isRedZone(lookahead_pos) and (dir == .Up) and (ghost.state != .Eyes)) {
                         continue;
                     }
-                    const test_pos = clampedTilePos(lookahead_pos + dirToVec(dir));
+                    const test_pos = clampedTilePos(ivec2.add(lookahead_pos, dirToVec(dir)));
                     if ((reverseDir(dir) != ghost.actor.dir) and !isBlockingTile(test_pos)) {
                         const cur_dist = squaredDistance(test_pos, ghost.target_pos);
                         if (cur_dist < min_dist) {
@@ -1438,10 +1453,10 @@ fn gameInit() void {
 
     // draw the playfield and PLAYER ONE READY! message
     gfxClear(TileCodeSpace, ColorCodeDot);
-    gfxColorText(.{9,0}, ColorCodeDefault, "HIGH SCORE");
+    gfxColorText(.{.x=9,.y=0}, ColorCodeDefault, "HIGH SCORE");
     gameInitPlayfield();
-    gfxColorText(.{9,14}, 5, "PLAYER ONE");
-    gfxColorText(.{11,20}, 9, "READY!");
+    gfxColorText(.{.x=9,.y=14}, 5, "PLAYER ONE");
+    gfxColorText(.{.x=11,.y=20}, 9, "READY!");
 }
 
 // initialize the playfield background tiles
@@ -1495,7 +1510,7 @@ fn gameInitPlayfield() void {
     while (y < DisplayTilesY-2): (y += 1) {
         var x: i16 = 0;
         while (x < DisplayTilesX): ({ x += 1; i += 1; }) {
-            gfxTile(.{x,y}, t[tiles[i] & 127]);
+            gfxTile(.{.x=x,.y=y}, t[tiles[i] & 127]);
         }
         // skip newline
         if (tiles[i] == '\r') {
@@ -1507,8 +1522,8 @@ fn gameInitPlayfield() void {
     }
 
     // ghost house door color
-    gfxColor(.{13,15}, 0x18);
-    gfxColor(.{14,15}, 0x18);
+    gfxColor(.{.x=13,.y=15}, 0x18);
+    gfxColor(.{.x=14,.y=15}, 0x18);
 }
 
 // initialize a new game round
@@ -1516,7 +1531,7 @@ fn gameRoundInit() void {
     gfxClearSprites();
 
     // clear the PLAYER ONE text
-    gfxColorText(.{9,14}, ColorCodeDot, "          ");
+    gfxColorText(.{.x=9,.y=14}, ColorCodeDot, "          ");
 
     // if a new round was started because Pacman had won (eaten all dots),
     // redraw the playfield and reset the global dot counter
@@ -1544,7 +1559,7 @@ fn gameRoundInit() void {
     state.game.num_ghosts_eaten = 0;
     gameInitTriggers();
 
-    gfxColorText(.{11,20}, 9, "READY!");
+    gfxColorText(.{.x=11,.y=20}, 9, "READY!");
 
     // the force-house trigger forces ghosts out of the house if Pacman
     // hasn't been eating dots for a while
@@ -1554,14 +1569,14 @@ fn gameRoundInit() void {
     state.game.pacman = .{
         .actor = .{
             .dir = .Left,
-            .pos = .{ 14*8, 26*8+4 }
+            .pos = .{ .x=14*8, .y=26*8+4 }
         }
     };
     // Blinky starts outside the ghost house, looking to the left and in scatter mode
     blinky().* = .{
         .actor = .{
             .dir = .Left,
-            .pos = .{ 14*8, 14*8 + 4 },
+            .pos = .{ .x=14*8, .y=14*8 + 4 },
         },
         .type = .Blinky,
         .next_dir = .Left,
@@ -1571,7 +1586,7 @@ fn gameRoundInit() void {
     pinky().* = .{
         .actor = .{
             .dir = .Down,
-            .pos = .{ 14*8, 17*8 + 4 },
+            .pos = .{ .x=14*8, .y=17*8 + 4 },
         },
         .type = .Pinky,
         .next_dir = .Down,
@@ -1581,7 +1596,7 @@ fn gameRoundInit() void {
     inky().* = .{
         .actor = .{
             .dir = .Up,
-            .pos = .{ 12*8, 17*8 + 4 },
+            .pos = .{ .x=12*8, .y=17*8 + 4 },
         },
         .type = .Inky,
         .next_dir = .Up,
@@ -1592,7 +1607,7 @@ fn gameRoundInit() void {
     clyde().* = .{
         .actor = .{
             .dir = .Up,
-            .pos = .{ 16*8, 17*8 + 4 },
+            .pos = .{ .x=16*8, .y=17*8 + 4 },
         },
         .type = .Clyde,
         .next_dir = .Up,
@@ -1611,13 +1626,13 @@ fn gameRoundInit() void {
 // update dynamic background tiles
 fn gameUpdateTiles() void {
     // print score and hiscore
-    gfxColorScore(.{6,1}, ColorCodeDefault, state.game.score);
+    gfxColorScore(.{.x=6,.y=1}, ColorCodeDefault, state.game.score);
     if (state.game.hiscore > 0) {
-        gfxColorScore(.{16,1}, ColorCodeDefault, state.game.hiscore);
+        gfxColorScore(.{.x=16,.y=1}, ColorCodeDefault, state.game.hiscore);
     }
 
     // update the energizer pill state (blinking/non-blinking)
-    const pill_pos = [NumPills]ivec2 { .{1,6}, .{26,6}, .{1,26}, .{26,26} };
+    const pill_pos = [NumPills]ivec2 { .{.x=1,.y=6}, .{.x=26,.y=6}, .{.x=1,.y=26}, .{.x=26,.y=26} };
     for (pill_pos) |pos| {
         if (0 != state.game.freeze) {
             gfxColor(pos, ColorCodeDot);
@@ -1637,7 +1652,7 @@ fn gameUpdateTiles() void {
         var i: i16 = 0;
         while (i < NumLives): (i += 1) {
             const color: u8 = if (i < state.game.num_lives) ColorCodePacman else ColorCodeBlank;
-            gfxColorTileQuad(.{2+2*i,34}, color, TileCodeLife);
+            gfxColorTileQuad(.{ .x = 2+2*i, .y = 34}, color, TileCodeLife);
         }
     }
 
@@ -1648,7 +1663,7 @@ fn gameUpdateTiles() void {
         while (i <= state.game.round): (i += 1) {
             if (i >= 0) {
                 const fruit = levelSpec(@intCast(u32,i)).bonus_fruit;
-                gfxColorTileQuad(.{x,34}, fruitColorCode(fruit), fruitTileCode(fruit));
+                gfxColorTileQuad(.{.x=x,.y=34}, fruitColorCode(fruit), fruitTileCode(fruit));
                 x -= 2;
             }
         }
@@ -1753,7 +1768,7 @@ fn gameUpdateSprites() void {
     else {
         spriteFruit().* = .{
             .enabled = true,
-            .pos = .{ 13 * TileWidth, 19 * TileHeight + TileHeight/2 },
+            .pos = .{ .x = 13 * TileWidth, .y = 19 * TileHeight + TileHeight/2 },
             .tile = fruitSpriteCode(state.game.active_fruit),
             .color = fruitColorCode(state.game.active_fruit)
         };
@@ -1769,13 +1784,13 @@ fn introTick() void {
         start(&state.gfx.fadein);
         inputEnable();
         gfxClear(TileCodeSpace, ColorCodeDefault);
-        gfxText(.{3,0}, "1UP   HIGH SCORE   2UP");
-        gfxColorScore(.{6,1}, ColorCodeDefault, 0);
+        gfxText(.{.x=3,.y=0}, "1UP   HIGH SCORE   2UP");
+        gfxColorScore(.{.x=6,.y=1}, ColorCodeDefault, 0);
         if (state.game.hiscore > 0) {
-            gfxColorScore(.{16,1}, ColorCodeDefault, state.game.hiscore);
+            gfxColorScore(.{.x=16,.y=1}, ColorCodeDefault, state.game.hiscore);
         }
-        gfxText(.{7,5}, "CHARACTER / NICKNAME");
-        gfxText(.{3,35}, "CREDIT 0");
+        gfxText(.{.x=7,.y=5}, "CHARACTER / NICKNAME");
+        gfxText(.{.x=3,.y=35}, "CREDIT 0");
     }
 
     // draw the animated 'ghost... name... nickname' lines
@@ -1789,19 +1804,19 @@ fn introTick() void {
         // 2*3 tiles ghost image
         delay += 30;
         if (afterOnce(state.intro.started, delay)) {
-            gfxColorTile(.{4,y+0}, color, TileCodeGhost+0); gfxColorTile(.{5,y+0}, color, TileCodeGhost+1);
-            gfxColorTile(.{4,y+1}, color, TileCodeGhost+2); gfxColorTile(.{5,y+1}, color, TileCodeGhost+3);
-            gfxColorTile(.{4,y+2}, color, TileCodeGhost+4); gfxColorTile(.{5,y+2}, color, TileCodeGhost+5);
+            gfxColorTile(.{.x=4,.y=y+0}, color, TileCodeGhost+0); gfxColorTile(.{.x=5,.y=y+0}, color, TileCodeGhost+1);
+            gfxColorTile(.{.x=4,.y=y+1}, color, TileCodeGhost+2); gfxColorTile(.{.x=5,.y=y+1}, color, TileCodeGhost+3);
+            gfxColorTile(.{.x=4,.y=y+2}, color, TileCodeGhost+4); gfxColorTile(.{.x=5,.y=y+2}, color, TileCodeGhost+5);
         }
         // after 1 second, the name of the ghost
         delay += 60;
         if (afterOnce(state.intro.started, delay)) {
-            gfxColorText(.{7,y+1}, color, name);
+            gfxColorText(.{.x=7,.y=y+1}, color, name);
         }
         // after 0.5 seconds, the nickname of the ghost
         delay += 30;
         if (afterOnce(state.intro.started, delay)) {
-            gfxColorText(.{17,y+1}, color, nicknames[i]);
+            gfxColorText(.{.x=17,.y=y+1}, color, nicknames[i]);
         }
     }
 
@@ -1809,20 +1824,20 @@ fn introTick() void {
     // o 50 PTS
     delay += 60;
     if (afterOnce(state.intro.started, delay)) {
-        gfxColorTile(.{10,24}, ColorCodeDot, TileCodeDot);
-        gfxText(.{12,24}, "10 \x5D\x5E\x5F");
-        gfxColorTile(.{10,26}, ColorCodeDot, TileCodePill);
-        gfxText(.{12,26}, "50 \x5D\x5E\x5F");
+        gfxColorTile(.{.x=10,.y=24}, ColorCodeDot, TileCodeDot);
+        gfxText(.{.x=12,.y=24}, "10 \x5D\x5E\x5F");
+        gfxColorTile(.{.x=10,.y=26}, ColorCodeDot, TileCodePill);
+        gfxText(.{.x=12,.y=26}, "50 \x5D\x5E\x5F");
     }
 
     // blinking "press any key" text
     delay += 60;
     if (after(state.intro.started, delay)) {
         if (0 != (since(state.intro.started) & 0x20)) {
-            gfxColorText(.{3,31}, 3, "                       ");
+            gfxColorText(.{.x=3,.y=31}, 3, "                       ");
         }
         else {
-            gfxColorText(.{3,31}, 3, "PRESS ANY KEY TO START!");
+            gfxColorText(.{.x=3,.y=31}, 3, "PRESS ANY KEY TO START!");
         }
     }
 
@@ -1875,15 +1890,15 @@ fn gfxClearPlayfieldToColor(color_code: u8) void {
 }
 
 fn gfxTileAt(pos: ivec2) u8 {
-    return data.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])];
+    return data.tile_ram[@intCast(usize,pos.y)][@intCast(usize,pos.x)];
 }
 
 fn gfxTile(pos: ivec2, tile_code: u8) void {
-    data.tile_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = tile_code;
+    data.tile_ram[@intCast(usize,pos.y)][@intCast(usize,pos.x)] = tile_code;
 }
 
 fn gfxColor(pos: ivec2, color_code: u8) void {
-    data.color_ram[@intCast(usize,pos[1])][@intCast(usize,pos[0])] = color_code;
+    data.color_ram[@intCast(usize,pos.y)][@intCast(usize,pos.x)] = color_code;
 }
 
 fn gfxColorTile(pos: ivec2, color_code: u8, tile_code: u8) void {
@@ -1914,9 +1929,9 @@ fn gfxColorChar(pos: ivec2, color_code: u8, chr: u8) void {
 fn gfxColorText(pos: ivec2, color_code: u8, text: []const u8) void {
     var p = pos;
     for (text) |chr| {
-        if (p[0] < DisplayTilesX) {
+        if (p.x < DisplayTilesX) {
             gfxColorChar(p, color_code, chr);
-            p[0] += 1;
+            p.x += 1;
         }
         else {
             break;
@@ -1927,9 +1942,9 @@ fn gfxColorText(pos: ivec2, color_code: u8, text: []const u8) void {
 fn gfxText(pos: ivec2, text: []const u8) void {
     var p = pos;
     for (text) |chr| {
-        if (p[0] < DisplayTilesX) {
+        if (p.x < DisplayTilesX) {
             gfxChar(p, chr);
-            p[0] += 1;
+            p.x += 1;
         }
         else {
             break;
@@ -1945,14 +1960,14 @@ fn gfxColorScore(pos: ivec2, color_code: u8, score: u32) void {
     var p = pos;
     var s = score;
     gfxColorChar(p, color_code, '0');
-    p[0] -= 1;
+    p.x -= 1;
     var digit: u32 = 0;
     while (digit < 8): (digit += 1) {
         // FIXME: should this narrowing cast not be necessary?
         const chr: u8 = @intCast(u8, s % 10) + '0';
         if (validTilePos(p)) {
             gfxColorChar(p, color_code, chr);
-            p[0] -= 1;
+            p.x -= 1;
             s /= 10;
             if (0 == s) {
                 break;
@@ -1974,7 +1989,7 @@ fn gfxColorTileQuad(pos: ivec2, color_code: u8, tile_code: u8) void {
         var xx: i16 = 0;
         while (xx < 2): (xx += 1) {
             const t: u8 = tile_code + @intCast(u8,yy)*2 + (1 - @intCast(u8,xx));
-            gfxColorTile(pos + ivec2{xx,yy}, color_code, t);
+            gfxColorTile(ivec2.add(pos, .{.x=xx,.y=yy}), color_code, t);
         }
     }
 }
@@ -1995,7 +2010,7 @@ fn gfxFruitScore(fruit: Fruit) void {
     };
     var i: usize = 0;
     while (i < 4): (i += 1) {
-        gfxColorTile(.{12+@intCast(i16,i),20}, color_code, tiles[i]);
+        gfxColorTile(.{ .x=12+@intCast(i16,i), .y=20}, color_code, tiles[i]);
     }
 }
 
@@ -2135,9 +2150,9 @@ fn gfxAddSpriteVertices() void {
     const dty = @intToFloat(f32, SpriteHeight) / TileTextureHeight;
     for (state.gfx.sprites) |*spr| {
         if (spr.enabled) {
-            const xx0 = @intToFloat(f32, spr.pos[0]) * dx;
+            const xx0 = @intToFloat(f32, spr.pos.x) * dx;
             const xx1 = xx0 + dx*SpriteWidth;
-            const yy0 = @intToFloat(f32, spr.pos[1]) * dy;
+            const yy0 = @intToFloat(f32, spr.pos.y) * dy;
             const yy1 = yy0 + dy*SpriteHeight;
 
             const x0 = if (spr.flipx) xx1 else xx0;
@@ -2163,7 +2178,7 @@ fn gfxAddSpriteVertices() void {
 fn gfxAddDebugMarkerVertices() void {
     for (state.gfx.debug_markers) |*dbg| {
         if (dbg.enabled) {
-            gfxAddTileVertices(@intCast(u32, dbg.tile_pos[0]), @intCast(u32, dbg.tile_pos[1]), dbg.tile, dbg.color);
+            gfxAddTileVertices(@intCast(u32, dbg.tile_pos.x), @intCast(u32, dbg.tile_pos.y), dbg.tile, dbg.color);
         }
     }
 }
