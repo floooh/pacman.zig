@@ -131,13 +131,27 @@ const ivec2 = struct {
     fn add(v0: ivec2, v1: ivec2) ivec2 {
         return .{ .x = v0.x + v1.x, .y = v0.y + v1.y };
     }
-    
     fn sub(v0: ivec2, v1: ivec2) ivec2 {
         return .{ .x = v0.x - v1.x, .y = v0.y - v1.y };
     }
-    
     fn mul(v0: ivec2, v1: ivec2) ivec2 {
         return .{ .x = v0.x * v1.x, .y = v0.y * v1.y };
+    }
+    fn equal(v0: ivec2, v1: ivec2) bool {
+        return (v0.x == v1.x) and (v0.y == v1.y);
+    }
+    fn nearEqual(v0: ivec2, v1: ivec2, tolerance: i16) bool {
+        const d = ivec2.sub(v1, v0);
+        // use our own sloppy abs(), math.absInt() can return a runtime error
+        const a: ivec2 = .{
+            .x = if (d.x < 0) -d.x else d.x,
+            .y = if (d.y < 0) -d.y else d.y
+        };
+        return (a.x <= tolerance) and (a.y <= tolerance);
+    }
+    fn squaredDistance(v0: ivec2, v1: ivec2) i16 {
+        const d = ivec2.sub(v1, v0);
+        return d.x*d.x + d.y*d.y;
     }
 };
 
@@ -426,28 +440,6 @@ fn xorshift32() u32 {
     x ^= x<<5;
     state.game.xorshift = x;
     return x;
-}
-
-// test if two ivec2 are equal
-fn equal(v0: ivec2, v1: ivec2) bool {
-    return (v0.x == v1.x) and (v0.y == v1.y);
-}
-
-// test if two ivec2 are nearly equal
-fn nearEqual(v0: ivec2, v1: ivec2, tolerance: i16) bool {
-    const d = ivec2.sub(v1, v0);
-    // use our own sloppy abs(), math.absInt() can return a runtime error
-    const a: ivec2 = .{
-        .x = if (d.x < 0) -d.x else d.x,
-        .y = if (d.y < 0) -d.y else d.y
-    };
-    return (a.x <= tolerance) and (a.y <= tolerance);
-}
-
-// squared distance between two ivec2
-fn squaredDistance(v0: ivec2, v1: ivec2) i16 {
-    const d = ivec2.sub(v1, v0);
-    return d.x*d.x + d.y*d.y;
 }
 
 // return the pixel difference from a pixel position to the next tile midpoint
@@ -998,7 +990,7 @@ fn gameUpdateActors() void {
         // check if Pacman eats the bonus fruit
         if (state.game.active_fruit != .None) {
             const test_pos = pixelToTilePos(ivec2.add(actor.pos, .{.x=TileWidth/2,.y=0}));
-            if (equal(test_pos, .{.x=14,.y=20})) {
+            if (ivec2.equal(test_pos, .{.x=14,.y=20})) {
                 start(&state.game.fruit_eaten);
                 state.game.score += levelSpec(state.game.round).bonus_score;
                 gfxFruitScore(state.game.active_fruit);
@@ -1009,7 +1001,7 @@ fn gameUpdateActors() void {
         // check if Pacman collides with a ghost
         for (state.game.ghosts) |*ghost| {
             const ghost_tile_pos = pixelToTilePos(ghost.actor.pos);
-            if (equal(ghost_tile_pos, pacman_tile_pos)) {
+            if (ivec2.equal(ghost_tile_pos, pacman_tile_pos)) {
                 switch (ghost.state) {
                     .Frightened => {
                         // Pacman eats ghost
@@ -1075,14 +1067,14 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
             // target position in front of the ghost house has been reached, then
             // switch into ENTERHOUSE state. Since ghosts in eye state move faster
             // than one pixel per tick, do a fuzzy comparison with the target pos
-            if (nearEqual(ghost.actor.pos, .{ .x=AntePortasX, .y=AntePortasY}, 1)) {
+            if (ivec2.nearEqual(ghost.actor.pos, .{ .x=AntePortasX, .y=AntePortasY}, 1)) {
                 new_state = .EnterHouse;
             }
         },
         .EnterHouse => {
             // Ghosts that enter the ghost house during the gameplay loop immediately
             // leave the house again after reaching their target position inside the house.
-            if (nearEqual(ghost.actor.pos, ghostHouseTargetPos(ghost.type), 1)) {
+            if (ivec2.nearEqual(ghost.actor.pos, ghostHouseTargetPos(ghost.type), 1)) {
                 new_state = .LeaveHouse;
             }
         },
@@ -1204,7 +1196,7 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
                 .Clyde => {
                     // if Clyde is far away from Pacman, he chases Pacman, 
                     // but if close he moves towards the scatter target
-                    if (squaredDistance(pixelToTilePos(ghost.actor.pos), pm_pos) > 64) {
+                    if (ivec2.squaredDistance(pixelToTilePos(ghost.actor.pos), pm_pos) > 64) {
                         ghost.target_pos = pm_pos;
                     }
                     else {
@@ -1313,7 +1305,7 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
                     }
                     const test_pos = clampedTilePos(ivec2.add(lookahead_pos, dirToVec(dir)));
                     if ((reverseDir(dir) != ghost.actor.dir) and !isBlockingTile(test_pos)) {
-                        const cur_dist = squaredDistance(test_pos, ghost.target_pos);
+                        const cur_dist = ivec2.squaredDistance(test_pos, ghost.target_pos);
                         if (cur_dist < min_dist) {
                             min_dist = cur_dist;
                             ghost.next_dir = dir;
