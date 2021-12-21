@@ -39,7 +39,7 @@ pub const Context = extern struct {
     id: u32 = 0,
 };
 pub const Range = extern struct {
-    ptr: ?*const c_void = null,
+    ptr: ?*const anyopaque = null,
     size: usize = 0,
 };
 pub const invalid_id = 0;
@@ -59,7 +59,7 @@ pub const Color = extern struct {
     b: f32 = 0.0,
     a: f32 = 0.0,
 };
-pub const Backend = extern enum(i32) {
+pub const Backend = enum(i32) {
     GLCORE33,
     GLES2,
     GLES3,
@@ -70,7 +70,7 @@ pub const Backend = extern enum(i32) {
     WGPU,
     DUMMY,
 };
-pub const PixelFormat = extern enum(i32) {
+pub const PixelFormat = enum(i32) {
     DEFAULT,
     NONE,
     R8,
@@ -165,34 +165,34 @@ pub const Limits = extern struct {
     max_vertex_attrs: i32 = 0,
     gl_max_vertex_uniform_vectors: i32 = 0,
 };
-pub const ResourceState = extern enum(i32) {
+pub const ResourceState = enum(i32) {
     INITIAL,
     ALLOC,
     VALID,
     FAILED,
     INVALID,
 };
-pub const Usage = extern enum(i32) {
+pub const Usage = enum(i32) {
     DEFAULT,
     IMMUTABLE,
     DYNAMIC,
     STREAM,
     NUM,
 };
-pub const BufferType = extern enum(i32) {
+pub const BufferType = enum(i32) {
     DEFAULT,
     VERTEXBUFFER,
     INDEXBUFFER,
     NUM,
 };
-pub const IndexType = extern enum(i32) {
+pub const IndexType = enum(i32) {
     DEFAULT,
     NONE,
     UINT16,
     UINT32,
     NUM,
 };
-pub const ImageType = extern enum(i32) {
+pub const ImageType = enum(i32) {
     DEFAULT,
     _2D,
     CUBE,
@@ -200,13 +200,13 @@ pub const ImageType = extern enum(i32) {
     ARRAY,
     NUM,
 };
-pub const SamplerType = extern enum(i32) {
+pub const SamplerType = enum(i32) {
     DEFAULT,
     FLOAT,
     SINT,
     UINT,
 };
-pub const CubeFace = extern enum(i32) {
+pub const CubeFace = enum(i32) {
     POS_X,
     NEG_X,
     POS_Y,
@@ -215,11 +215,11 @@ pub const CubeFace = extern enum(i32) {
     NEG_Z,
     NUM,
 };
-pub const ShaderStage = extern enum(i32) {
+pub const ShaderStage = enum(i32) {
     VS,
     FS,
 };
-pub const PrimitiveType = extern enum(i32) {
+pub const PrimitiveType = enum(i32) {
     DEFAULT,
     POINTS,
     LINES,
@@ -228,7 +228,7 @@ pub const PrimitiveType = extern enum(i32) {
     TRIANGLE_STRIP,
     NUM,
 };
-pub const Filter = extern enum(i32) {
+pub const Filter = enum(i32) {
     DEFAULT,
     NEAREST,
     LINEAR,
@@ -238,7 +238,7 @@ pub const Filter = extern enum(i32) {
     LINEAR_MIPMAP_LINEAR,
     NUM,
 };
-pub const Wrap = extern enum(i32) {
+pub const Wrap = enum(i32) {
     DEFAULT,
     REPEAT,
     CLAMP_TO_EDGE,
@@ -246,14 +246,14 @@ pub const Wrap = extern enum(i32) {
     MIRRORED_REPEAT,
     NUM,
 };
-pub const BorderColor = extern enum(i32) {
+pub const BorderColor = enum(i32) {
     DEFAULT,
     TRANSPARENT_BLACK,
     OPAQUE_BLACK,
     OPAQUE_WHITE,
     NUM,
 };
-pub const VertexFormat = extern enum(i32) {
+pub const VertexFormat = enum(i32) {
     INVALID,
     FLOAT,
     FLOAT2,
@@ -272,13 +272,13 @@ pub const VertexFormat = extern enum(i32) {
     UINT10_N2,
     NUM,
 };
-pub const VertexStep = extern enum(i32) {
+pub const VertexStep = enum(i32) {
     DEFAULT,
     PER_VERTEX,
     PER_INSTANCE,
     NUM,
 };
-pub const UniformType = extern enum(i32) {
+pub const UniformType = enum(i32) {
     INVALID,
     FLOAT,
     FLOAT2,
@@ -287,20 +287,20 @@ pub const UniformType = extern enum(i32) {
     MAT4,
     NUM,
 };
-pub const CullMode = extern enum(i32) {
+pub const CullMode = enum(i32) {
     DEFAULT,
     NONE,
     FRONT,
     BACK,
     NUM,
 };
-pub const FaceWinding = extern enum(i32) {
+pub const FaceWinding = enum(i32) {
     DEFAULT,
     CCW,
     CW,
     NUM,
 };
-pub const CompareFunc = extern enum(i32) {
+pub const CompareFunc = enum(i32) {
     DEFAULT,
     NEVER,
     LESS,
@@ -312,7 +312,7 @@ pub const CompareFunc = extern enum(i32) {
     ALWAYS,
     NUM,
 };
-pub const StencilOp = extern enum(i32) {
+pub const StencilOp = enum(i32) {
     DEFAULT,
     KEEP,
     ZERO,
@@ -324,7 +324,7 @@ pub const StencilOp = extern enum(i32) {
     DECR_WRAP,
     NUM,
 };
-pub const BlendFactor = extern enum(i32) {
+pub const BlendFactor = enum(i32) {
     DEFAULT,
     ZERO,
     ONE,
@@ -343,14 +343,14 @@ pub const BlendFactor = extern enum(i32) {
     ONE_MINUS_BLEND_ALPHA,
     NUM,
 };
-pub const BlendOp = extern enum(i32) {
+pub const BlendOp = enum(i32) {
     DEFAULT,
     ADD,
     SUBTRACT,
     REVERSE_SUBTRACT,
     NUM,
 };
-pub const ColorMask = extern enum(i32) {
+pub const ColorMask = enum(i32) {
     DEFAULT = 0,
     NONE = 16,
     R = 1,
@@ -369,7 +369,7 @@ pub const ColorMask = extern enum(i32) {
     GBA = 14,
     RGBA = 15,
 };
-pub const Action = extern enum(i32) {
+pub const Action = enum(i32) {
     DEFAULT,
     CLEAR,
     LOAD,
@@ -413,9 +413,9 @@ pub const BufferDesc = extern struct {
     data: Range = .{ },
     label: [*c]const u8 = null,
     gl_buffers: [2]u32 = [_]u32{0} ** 2,
-    mtl_buffers: [2]?*const c_void = [_]?*const c_void { null } ** 2,
-    d3d11_buffer: ?*const c_void = null,
-    wgpu_buffer: ?*const c_void = null,
+    mtl_buffers: [2]?*const anyopaque = [_]?*const anyopaque { null } ** 2,
+    d3d11_buffer: ?*const anyopaque = null,
+    wgpu_buffer: ?*const anyopaque = null,
     _end_canary: u32 = 0,
 };
 pub const ImageData = extern struct {
@@ -445,10 +445,10 @@ pub const ImageDesc = extern struct {
     label: [*c]const u8 = null,
     gl_textures: [2]u32 = [_]u32{0} ** 2,
     gl_texture_target: u32 = 0,
-    mtl_textures: [2]?*const c_void = [_]?*const c_void { null } ** 2,
-    d3d11_texture: ?*const c_void = null,
-    d3d11_shader_resource_view: ?*const c_void = null,
-    wgpu_texture: ?*const c_void = null,
+    mtl_textures: [2]?*const anyopaque = [_]?*const anyopaque { null } ** 2,
+    d3d11_texture: ?*const anyopaque = null,
+    d3d11_shader_resource_view: ?*const anyopaque = null,
+    wgpu_texture: ?*const anyopaque = null,
     _end_canary: u32 = 0,
 };
 pub const ShaderAttrDesc = extern struct {
@@ -603,31 +603,31 @@ pub const GlContextDesc = extern struct {
     force_gles2: bool = false,
 };
 pub const MetalContextDesc = extern struct {
-    device: ?*const c_void = null,
-    renderpass_descriptor_cb: ?fn() callconv(.C) ?*const c_void = null,
-    renderpass_descriptor_userdata_cb: ?fn(?*c_void) callconv(.C) ?*const c_void = null,
-    drawable_cb: ?fn() callconv(.C) ?*const c_void = null,
-    drawable_userdata_cb: ?fn(?*c_void) callconv(.C) ?*const c_void = null,
-    user_data: ?*c_void = null,
+    device: ?*const anyopaque = null,
+    renderpass_descriptor_cb: ?fn() callconv(.C) ?*const anyopaque = null,
+    renderpass_descriptor_userdata_cb: ?fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    drawable_cb: ?fn() callconv(.C) ?*const anyopaque = null,
+    drawable_userdata_cb: ?fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    user_data: ?*anyopaque = null,
 };
 pub const D3d11ContextDesc = extern struct {
-    device: ?*const c_void = null,
-    device_context: ?*const c_void = null,
-    render_target_view_cb: ?fn() callconv(.C) ?*const c_void = null,
-    render_target_view_userdata_cb: ?fn(?*c_void) callconv(.C) ?*const c_void = null,
-    depth_stencil_view_cb: ?fn() callconv(.C) ?*const c_void = null,
-    depth_stencil_view_userdata_cb: ?fn(?*c_void) callconv(.C) ?*const c_void = null,
-    user_data: ?*c_void = null,
+    device: ?*const anyopaque = null,
+    device_context: ?*const anyopaque = null,
+    render_target_view_cb: ?fn() callconv(.C) ?*const anyopaque = null,
+    render_target_view_userdata_cb: ?fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_cb: ?fn() callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_userdata_cb: ?fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    user_data: ?*anyopaque = null,
 };
 pub const WgpuContextDesc = extern struct {
-    device: ?*const c_void = null,
-    render_view_cb: ?fn() callconv(.C) ?*const c_void = null,
-    render_view_userdata_cb: ?fn(?*c_void) callconv(.C) ?*const c_void = null,
-    resolve_view_cb: ?fn() callconv(.C) ?*const c_void = null,
-    resolve_view_userdata_cb: ?fn(?*c_void) callconv(.C) ?*const c_void = null,
-    depth_stencil_view_cb: ?fn() callconv(.C) ?*const c_void = null,
-    depth_stencil_view_userdata_cb: ?fn(?*c_void) callconv(.C) ?*const c_void = null,
-    user_data: ?*c_void = null,
+    device: ?*const anyopaque = null,
+    render_view_cb: ?fn() callconv(.C) ?*const anyopaque = null,
+    render_view_userdata_cb: ?fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    resolve_view_cb: ?fn() callconv(.C) ?*const anyopaque = null,
+    resolve_view_userdata_cb: ?fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_cb: ?fn() callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_userdata_cb: ?fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    user_data: ?*anyopaque = null,
 };
 pub const ContextDesc = extern struct {
     color_format: i32 = 0,
@@ -976,15 +976,15 @@ pub extern fn sg_discard_context(Context) void;
 pub fn discardContext(ctx_id: Context) void {
     sg_discard_context(ctx_id);
 }
-pub extern fn sg_d3d11_device() ?*const c_void;
-pub fn d3d11Device() ?*const c_void {
+pub extern fn sg_d3d11_device() ?*const anyopaque;
+pub fn d3d11Device() ?*const anyopaque {
     return sg_d3d11_device();
 }
-pub extern fn sg_mtl_device() ?*const c_void;
-pub fn mtlDevice() ?*const c_void {
+pub extern fn sg_mtl_device() ?*const anyopaque;
+pub fn mtlDevice() ?*const anyopaque {
     return sg_mtl_device();
 }
-pub extern fn sg_mtl_render_command_encoder() ?*const c_void;
-pub fn mtlRenderCommandEncoder() ?*const c_void {
+pub extern fn sg_mtl_render_command_encoder() ?*const anyopaque;
+pub fn mtlRenderCommandEncoder() ?*const anyopaque {
     return sg_mtl_render_command_encoder();
 }

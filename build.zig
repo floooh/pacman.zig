@@ -1,10 +1,26 @@
 const bld = @import("std").build;
 
-fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
+pub fn build(b: *bld.Builder) void {
+    const target = b.standardTargetOptions(.{});
+    const exe = b.addExecutable("pacman", "src/pacman.zig");
+    exe.setTarget(target);
+    addSokol(exe);
+    exe.setBuildMode(b.standardReleaseOptions());
+    exe.addPackagePath("sokol", "src/sokol/sokol.zig");
+    exe.install();
+    b.step("run", "Run pacman").dependOn(&exe.run().step);
+}
+
+fn addSokol(exe: *bld.LibExeObjStep) void {
     exe.linkLibC();
     if (exe.target.isDarwin()) {
-        b.env_map.put("ZIG_SYSTEM_LINKER_HACK", "1") catch unreachable;
-        exe.addCSourceFile("src/sokol/sokol.c", &[_][]const u8 { "-ObjC" });
+        if (!@import("builtin").target.isDarwin()) {
+            // NOTE: this is for cross-compilation support
+            exe.addSystemIncludeDir("/usr/include");
+            exe.addLibPath("/usr/lib");
+            exe.addFrameworkDir("/System/Library/Frameworks");
+        }
+        exe.addCSourceFile("src/sokol/sokol.c", &.{ "-ObjC" });
         exe.linkFramework("MetalKit");
         exe.linkFramework("Metal");
         exe.linkFramework("Cocoa");
@@ -12,7 +28,7 @@ fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
         exe.linkFramework("AudioToolbox");
     }
     else {
-        exe.addCSourceFile("src/sokol/sokol.c", &[_][]const u8{});
+        exe.addCSourceFile("src/sokol/sokol.c", &.{});
         if (exe.target.isLinux()) {
             exe.linkSystemLibrary("X11");
             exe.linkSystemLibrary("Xi");
@@ -29,13 +45,4 @@ fn addSokol(b: *bld.Builder, exe: *bld.LibExeObjStep) !void {
             exe.linkSystemLibrary("dxgi");
         }
     }
-}
-
-pub fn build(b: *bld.Builder) void {
-    const exe = b.addExecutable("pacman", "src/pacman.zig");
-    addSokol(b, exe) catch unreachable;
-    exe.setBuildMode(b.standardReleaseOptions());
-    exe.addPackagePath("sokol", "src/sokol/sokol.zig");
-    exe.install();
-    b.step("run", "Run pacman").dependOn(&exe.run().step);
 }
