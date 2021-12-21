@@ -15,6 +15,7 @@ fn addSokol(exe: *bld.LibExeObjStep) void {
     exe.linkLibC();
     if (exe.target.isDarwin()) {
         if (!@import("builtin").target.isDarwin()) {
+            // NOTE: this is for cross-compilation support
             exe.addSystemIncludeDir("/usr/include");
             exe.addLibPath("/usr/lib");
             exe.addFrameworkDir("/System/Library/Frameworks");
