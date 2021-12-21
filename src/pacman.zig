@@ -2342,13 +2342,13 @@ fn gfxCreateResources() void {
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/offscreen_vs.hlsl"),
             .GLCORE33    => @embedFile("shaders/offscreen_vs.v330.glsl"),
-            .METAL_MACOS => @embedFile("shaders/offscreen_vs.metal"),
+            .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_vs.metal"),
             else => unreachable,
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/offscreen_fs.hlsl"),
             .GLCORE33    => @embedFile("shaders/offscreen_fs.v330.glsl"),
-            .METAL_MACOS => @embedFile("shaders/offscreen_fs.metal"),
+            .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_fs.metal"),
             else => unreachable,
         };
         var pip_desc: sg.PipelineDesc = .{
@@ -2377,13 +2377,13 @@ fn gfxCreateResources() void {
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/display_vs.hlsl"),
             .GLCORE33    => @embedFile("shaders/display_vs.v330.glsl"),
-            .METAL_MACOS => @embedFile("shaders/display_vs.metal"),
+            .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_vs.metal"),
             else => unreachable
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/display_fs.hlsl"), 
             .GLCORE33    => @embedFile("shaders/display_fs.v330.glsl"),
-            .METAL_MACOS => @embedFile("shaders/display_fs.metal"),
+            .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_fs.metal"),
             else => unreachable
         };
         var pip_desc: sg.PipelineDesc = .{
@@ -2819,6 +2819,9 @@ export fn input(ev: ?*const sapp.Event) void {
                 else => {}
             }
         }
+    }
+    else if ((event.type == .TOUCHES_BEGAN) or (event.type == .TOUCHES_ENDED)) {
+        state.input.anykey = event.type == .TOUCHES_BEGAN;
     }
 }
 
