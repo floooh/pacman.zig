@@ -1,4 +1,7 @@
 # pacman.zig
+
+[![build](https://github.com/floooh/pacman.zig/actions/workflows/main.yml/badge.svg)](https://github.com/floooh/pacman.zig/actions/workflows/main.yml)
+
 Like https://github.com/floooh/pacman.c, but in Zig.
 
 Zig bindings for the sokol headers are here: https://github.com/floooh/sokol-zig
