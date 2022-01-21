@@ -9,7 +9,6 @@ const sokol  = @import("sokol");
 const sg     = sokol.gfx;
 const sapp   = sokol.app;
 const sgapp  = sokol.app_gfx_glue;
-const stm    = sokol.time;
 const saudio = sokol.audio;
 
 // debugging and config options
@@ -2758,7 +2757,6 @@ fn soundFuncFrightened(slot: usize) void {
 
 //--- sokol-app callbacks ------------------------------------------------------
 export fn init() void {
-    stm.setup();
     gfxInit();
     soundInit();
     if (DbgSkipIntro) {
@@ -2772,7 +2770,7 @@ export fn init() void {
 export fn frame() void {
 
     // run the game at a fixed tick rate regardless of frame rate
-    var frame_time_ns = stm.ns(stm.laptime(&state.timing.laptime_store));
+    var frame_time_ns = @floatCast(f32, sapp.frameDuration() * 1000000000.0);
     // clamp max frame duration (so the timing isn't messed up when stepping in debugger)
     if (frame_time_ns > MaxFrameTimeNS) {
         frame_time_ns = MaxFrameTimeNS;
