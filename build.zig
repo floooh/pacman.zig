@@ -78,6 +78,7 @@ fn buildSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_d
 fn addDarwinCrossCompilePaths(b: *Builder, step: *LibExeObjStep) void {
     checkDarwinSysRoot(b);
     step.addLibPath("/usr/lib");
+    step.addSystemIncludeDir("/usr/include");
     step.addFrameworkDir("/System/Library/Frameworks");
 }
 
