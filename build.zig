@@ -9,15 +9,13 @@ pub fn build(b: *Builder) void {
     const exe = b.addExecutable("pacman", "src/pacman.zig");
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
-    const cross_compiling = (target.os_tag != null) or !builtin.target.isDarwin();
-
+    const cross_compiling_to_darwin = target.isDarwin() and (target.getOsTag() != builtin.os.tag);
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    exe.linkLibrary(buildSokol(b, target, mode, cross_compiling, ""));
+    exe.linkLibrary(buildSokol(b, target, mode, cross_compiling_to_darwin, ""));
     exe.addPackagePath("sokol", "src/sokol/sokol.zig");
-    if (cross_compiling) {
-        exe.addLibPath("/usr/lib");
-        exe.addFrameworkDir("/System/Library/Frameworks");
+    if (cross_compiling_to_darwin) {
+        addDarwinCrossCompilePaths(b, exe);
     }
     exe.install();
 
@@ -31,7 +29,7 @@ pub fn build(b: *Builder) void {
     }
 }
 
-fn buildSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling: bool, comptime prefix_path: []const u8) *LibExeObjStep {
+fn buildSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *LibExeObjStep {
     const lib = b.addStaticLibrary("sokol", null);
     lib.setTarget(target);
     lib.setBuildMode(mode);
@@ -71,18 +69,26 @@ fn buildSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling: boo
         }
     }
     // setup cross-compilation search paths
-    if (cross_compiling) {
-        if (b.sysroot == null) {
-            std.log.warn("===================================================================================", .{});
-            std.log.warn("You haven't set the path to Apple SDK which may lead to build errors.", .{});
-            std.log.warn("Hint: you can the path to Apple SDK with --sysroot <path> flag like so:", .{});
-            std.log.warn("  zig build --sysroot $(xcrun --sdk iphoneos --show-sdk-path) -Dtarget=aarch64-ios", .{});
-            std.log.warn("or:", .{});
-            std.log.warn("  zig build --sysroot $(xcrun --sdk iphonesimulator --show-sdk-path) -Dtarget=aarch64-ios-simulator", .{});
-            std.log.warn("===================================================================================", .{});
-        }
-        lib.addFrameworkDir("/System/Library/Frameworks");
-        lib.addSystemIncludeDir("/usr/include");
+    if (cross_compiling_to_darwin) {
+        addDarwinCrossCompilePaths(b, lib);
     }
     return lib;
+}
+
+fn addDarwinCrossCompilePaths(b: *Builder, step: *LibExeObjStep) void {
+    checkDarwinSysRoot(b);
+    step.addLibPath("/usr/lib");
+    step.addFrameworkDir("/System/Library/Frameworks");
+}
+
+fn checkDarwinSysRoot(b: *Builder) void {
+    if (b.sysroot == null) {
+        std.log.warn("===================================================================================", .{});
+        std.log.warn("You haven't set the path to Apple SDK which may lead to build errors.", .{});
+        std.log.warn("Hint: you can the path to Apple SDK with --sysroot <path> flag like so:", .{});
+        std.log.warn("  zig build --sysroot $(xcrun --sdk iphoneos --show-sdk-path) -Dtarget=aarch64-ios", .{});
+        std.log.warn("or:", .{});
+        std.log.warn("  zig build --sysroot $(xcrun --sdk iphonesimulator --show-sdk-path) -Dtarget=aarch64-ios-simulator", .{});
+        std.log.warn("===================================================================================", .{});
+    }
 }
