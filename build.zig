@@ -5,31 +5,97 @@ const CrossTarget = std.zig.CrossTarget;
 const Mode = std.builtin.Mode;
 const builtin = @import("builtin");
 
+const emcc_path = "/Users/floh/projects/fips-sdks/emsdk/upstream/emscripten/emcc";
+
 pub fn build(b: *Builder) void {
-    const exe = b.addExecutable("pacman", "src/pacman.zig");
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
+    if (target.getCpu().arch == .wasm32) {
+        buildWasm(b, target, mode);
+    }
+    else {
+        buildNative(b, target, mode);
+    }
+}
+
+fn buildNative(b: *Builder, target: CrossTarget, mode: Mode) void {
+    const exe = b.addExecutable("pacman", null);
     const cross_compiling_to_darwin = target.isDarwin() and (target.getOsTag() != builtin.os.tag);
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    exe.linkLibrary(buildSokol(b, target, mode, cross_compiling_to_darwin, ""));
-    exe.addPackagePath("sokol", "src/sokol/sokol.zig");
-    if (cross_compiling_to_darwin) {
-        addDarwinCrossCompilePaths(b, exe);
-    }
+    exe.addObject(objGame(b, target, mode, cross_compiling_to_darwin));
+    exe.linkLibrary(libSokol(b, target, mode, cross_compiling_to_darwin, ""));
     exe.install();
 
-    b.step("run", "Run pacman").dependOn(&exe.run().step);
-    
     if (target.getOsTag() == .ios) {
         const install_path = std.fmt.allocPrint(b.allocator, "{s}/bin/pacman", .{b.install_path}) catch unreachable;
         defer b.allocator.free(install_path);
         b.installFile(install_path, "bin/Pacman.app/pacman");
         b.installFile("src/ios/Info.plist", "bin/Pacman.app/Info.plist");
     }
+    b.step("run", "Run pacman").dependOn(&exe.run().step);
 }
 
-fn buildSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *LibExeObjStep {
+fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) void {
+    // build sokol into a library
+    const include_path = std.fmt.allocPrint(b.allocator, "{s}/include", .{ b.sysroot }) catch unreachable;
+    defer b.allocator.free(include_path);
+    const libpath_option = std.fmt.allocPrint(b.allocator, "-L{s}/lib/wasm32-emscripten", .{ b.sysroot }) catch unreachable;
+    defer b.allocator.free(libpath_option);
+//    const sokol = libSokol(b, target, mode, false, "");
+//    sokol.defineCMacro("__EMSCRIPTEN__", null);
+//    sokol.addIncludeDir(include_path);
+//    sokol.install();
+    
+    // build game code into an object
+    const game = libGame(b, target, mode, false);
+    game.install();
+    
+    const emcc = b.addSystemCommand(&.{
+        emcc_path,
+        "src/emscripten/entry.c",
+        "-ozig-out/bin/pacman.html",
+        "--shell-file", "src/emscripten/shell.html",
+        libpath_option,
+        "-Lzig-out/lib/",
+        "-lgame",
+        "-lsokol",
+        "-sUSE_WEBGL2",
+//        "-sERROR_ON_UNDEFINED_SYMBOLS=0",
+    });
+//    emcc.step.dependOn(&sokol.step);
+    emcc.step.dependOn(&game.step);
+    
+    const exe = b.addExecutable("dummy", null);
+    exe.step.dependOn(&emcc.step);
+    exe.install();
+}
+
+// build the game code into a separate object, makes it easier to handle the separate Emscripten link step for WASM
+fn objGame(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_darwin: bool) *LibExeObjStep {
+    const obj = b.addObject("game", "src/pacman.zig");
+    obj.setTarget(target);
+    obj.setBuildMode(mode);
+    obj.addPackagePath("sokol", "src/sokol/sokol.zig");
+    if (cross_compiling_to_darwin) {
+        addDarwinCrossCompilePaths(b, obj);
+    }
+    return obj;
+}
+
+// build the game code into a separate object, makes it easier to handle the separate Emscripten link step for WASM
+fn libGame(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_darwin: bool) *LibExeObjStep {
+    const lib = b.addStaticLibrary("game", "src/pacman.zig");
+    lib.setTarget(target);
+    lib.setBuildMode(mode);
+    lib.addPackagePath("sokol", "src/sokol/sokol.zig");
+    if (cross_compiling_to_darwin) {
+        addDarwinCrossCompilePaths(b, lib);
+    }
+    return lib;
+}
+
+fn libSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *LibExeObjStep {
     const lib = b.addStaticLibrary("sokol", null);
     lib.setTarget(target);
     lib.setBuildMode(mode);

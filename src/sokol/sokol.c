@@ -7,6 +7,8 @@
     #define SOKOL_LOG(msg) OutputDebugStringA(msg)
 #elif defined(__APPLE__)
     #define SOKOL_METAL
+#elif defined(__EMSCRIPTEN__)
+    #define SOKOL_GLES3
 #else
     #define SOKOL_GLCORE33
 #endif

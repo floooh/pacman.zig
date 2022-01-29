@@ -2341,12 +2341,14 @@ fn gfxCreateResources() void {
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/offscreen_vs.hlsl"),
             .GLCORE33    => @embedFile("shaders/offscreen_vs.v330.glsl"),
+            .GLES3       => @embedFile("shaders/offscreen_vs.v300es.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_vs.metal"),
             else => unreachable,
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/offscreen_fs.hlsl"),
             .GLCORE33    => @embedFile("shaders/offscreen_fs.v330.glsl"),
+            .GLES3       => @embedFile("shaders/offscreen_fs.v300es.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_fs.metal"),
             else => unreachable,
         };
@@ -2376,12 +2378,14 @@ fn gfxCreateResources() void {
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/display_vs.hlsl"),
             .GLCORE33    => @embedFile("shaders/display_vs.v330.glsl"),
+            .GLES3       => @embedFile("shaders/display_vs.v300es.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_vs.metal"),
             else => unreachable
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/display_fs.hlsl"), 
             .GLCORE33    => @embedFile("shaders/display_fs.v330.glsl"),
+            .GLES3       => @embedFile("shaders/display_fs.v300es.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_fs.metal"),
             else => unreachable
         };
@@ -2829,6 +2833,18 @@ export fn cleanup() void {
 }
 
 pub fn main() void {
+    sapp.run(.{
+        .init_cb = init,
+        .frame_cb = frame,
+        .event_cb = input,
+        .cleanup_cb = cleanup,
+        .width = 2 * DisplayPixelsX,
+        .height = 2 * DisplayPixelsY,
+        .window_title = "pacman.zig"
+    });
+}
+
+export fn emsc_main() void {
     sapp.run(.{
         .init_cb = init,
         .frame_cb = frame,
