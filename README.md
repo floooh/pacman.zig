@@ -60,7 +60,7 @@ zig build --sysroot $(xcrun --sdk iphoneos --show-sdk-path) -Dtarget=aarch64-ios
 ## Experimental browser support
 
 Building the project to run in web browsers requires the Emscripten SDK to provide
-the sysroot and linker:
+a sysroot and linker:
 
 ```bash
 git clone https://github.com/floooh/pacman.zig
