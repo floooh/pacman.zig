@@ -2341,14 +2341,14 @@ fn gfxCreateResources() void {
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/offscreen_vs.hlsl"),
             .GLCORE33    => @embedFile("shaders/offscreen_vs.v330.glsl"),
-            .GLES3       => @embedFile("shaders/offscreen_vs.v300es.glsl"),
+            .GLES2       => @embedFile("shaders/offscreen_vs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_vs.metal"),
             else => unreachable,
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/offscreen_fs.hlsl"),
             .GLCORE33    => @embedFile("shaders/offscreen_fs.v330.glsl"),
-            .GLES3       => @embedFile("shaders/offscreen_fs.v300es.glsl"),
+            .GLES2       => @embedFile("shaders/offscreen_fs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_fs.metal"),
             else => unreachable,
         };
@@ -2378,14 +2378,14 @@ fn gfxCreateResources() void {
         shd_desc.vs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/display_vs.hlsl"),
             .GLCORE33    => @embedFile("shaders/display_vs.v330.glsl"),
-            .GLES3       => @embedFile("shaders/display_vs.v300es.glsl"),
+            .GLES2       => @embedFile("shaders/display_vs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_vs.metal"),
             else => unreachable
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
             .D3D11       => @embedFile("shaders/display_fs.hlsl"), 
             .GLCORE33    => @embedFile("shaders/display_fs.v330.glsl"),
-            .GLES3       => @embedFile("shaders/display_fs.v300es.glsl"),
+            .GLES2       => @embedFile("shaders/display_fs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_fs.metal"),
             else => unreachable
         };
@@ -2844,6 +2844,7 @@ pub fn main() void {
     });
 }
 
+// special entry point for Emscripten build, called from src/emscripten/entry.c
 export fn emsc_main() void {
     sapp.run(.{
         .init_cb = init,
@@ -2852,7 +2853,7 @@ export fn emsc_main() void {
         .cleanup_cb = cleanup,
         .width = 2 * DisplayPixelsX,
         .height = 2 * DisplayPixelsY,
-        .window_title = "pacman.zig"
+        .window_title = "pacman.zig",
     });
 }
 

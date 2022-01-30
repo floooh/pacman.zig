@@ -1,98 +1,126 @@
 const std = @import("std");
+const fs = std.fs;
 const Builder = std.build.Builder;
 const LibExeObjStep = std.build.LibExeObjStep;
 const CrossTarget = std.zig.CrossTarget;
 const Mode = std.builtin.Mode;
 const builtin = @import("builtin");
 
-const emcc_path = "/Users/floh/projects/fips-sdks/emsdk/upstream/emscripten/emcc";
-
 pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
     const mode = b.standardReleaseOptions();
-    if (target.getCpu().arch == .wasm32) {
-        buildWasm(b, target, mode);
+    if (target.getCpu().arch != .wasm32) {
+        buildNative(b, target, mode) catch unreachable;
     }
     else {
-        buildNative(b, target, mode);
+        buildWasm(b, target, mode) catch |err| {
+            std.log.err("{s}", .{ err });
+        };
     }
 }
 
-fn buildNative(b: *Builder, target: CrossTarget, mode: Mode) void {
-    const exe = b.addExecutable("pacman", null);
+// this is the regular build for all native platforms
+fn buildNative(b: *Builder, target: CrossTarget, mode: Mode) !void {
+    const exe = b.addExecutable("pacman", "src/pacman.zig");
     const cross_compiling_to_darwin = target.isDarwin() and (target.getOsTag() != builtin.os.tag);
     exe.setTarget(target);
     exe.setBuildMode(mode);
-    exe.addObject(objGame(b, target, mode, cross_compiling_to_darwin));
+    exe.addPackagePath("sokol", "src/sokol/sokol.zig");
     exe.linkLibrary(libSokol(b, target, mode, cross_compiling_to_darwin, ""));
+    if (cross_compiling_to_darwin) {
+        addDarwinCrossCompilePaths(b, exe);
+    }
     exe.install();
-
+    b.step("run", "Run pacman").dependOn(&exe.run().step);
+    
+    // for iOS generate a valid app bundle directory structure
     if (target.getOsTag() == .ios) {
-        const install_path = std.fmt.allocPrint(b.allocator, "{s}/bin/pacman", .{b.install_path}) catch unreachable;
+        const install_path = try fs.path.join(b.allocator, &.{ b.install_path, "bin", "pacman" });
         defer b.allocator.free(install_path);
         b.installFile(install_path, "bin/Pacman.app/pacman");
         b.installFile("src/ios/Info.plist", "bin/Pacman.app/Info.plist");
     }
-    b.step("run", "Run pacman").dependOn(&exe.run().step);
 }
 
-fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) void {
-    // build sokol into a library
-    const include_path = std.fmt.allocPrint(b.allocator, "{s}/include", .{ b.sysroot }) catch unreachable;
+// building for WASM/HTML5 requires a couple of hacks and workarounds: 
+//
+//  - emcc must be used as linker instead of the zig linker to implement
+//    the additional "Emscripten magic" (e.g. generating the .html and .js
+//    file, setting up the web API shims, etc...)
+//  - the Sokol C headers must be compiled as target wasm32-emscripten, otherwise
+//    the EMSCRIPTEN_KEEPALIVE and EM_JS macro magic doesn't work
+//  - an additional header search path into Emscripten's sysroot
+//    must be set so that the C code compiled with Zig finds the Emscripten
+//    sysroot headers
+//  - the Zig code must *not* be compiled with wasm32-emscripten, because parts
+//    of the Zig stdlib doesn't compile, so instead use wasm32-freestanding
+//  - the game code in pacman.zig is compiled into a library, and a 
+//    C file (src/emscripten/entry.c) is used as entry point, which then
+//    calls an exported entry function "emsc_main()" in pacman.zig instead
+//    of the regular zig main function.
+//
+fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
+
+    if (b.sysroot == null) {
+        std.log.err("Please build with 'zig build -Dtarget=wasm32-emscripten --sysroot [path/to/emsdk]/upstream/emscripten/cache/sysroot", .{});
+        return error.SysRootExpected;
+    }
+
+    // derive the emcc and emrun paths from the provided sysroot:
+    const emcc_path = try fs.path.join(b.allocator, &.{ b.sysroot.?, "../../emcc" });
+    defer b.allocator.free(emcc_path);
+    const emrun_path = try fs.path.join(b.allocator, &.{ b.sysroot.?, "../../emrun" });
+    defer b.allocator.free(emrun_path);
+    
+    // for some reason, the sysroot/include path must be provided separately
+    const include_path = try fs.path.join(b.allocator, &.{ b.sysroot.?, "include"});
     defer b.allocator.free(include_path);
-    const libpath_option = std.fmt.allocPrint(b.allocator, "-L{s}/lib/wasm32-emscripten", .{ b.sysroot }) catch unreachable;
-    defer b.allocator.free(libpath_option);
-//    const sokol = libSokol(b, target, mode, false, "");
-//    sokol.defineCMacro("__EMSCRIPTEN__", null);
-//    sokol.addIncludeDir(include_path);
-//    sokol.install();
+
+    // sokol must be built with wasm32-emscripten
+    var wasm32_emscripten_target = target;
+    wasm32_emscripten_target.os_tag = .emscripten;
+    const libsokol = libSokol(b, wasm32_emscripten_target, mode, false, "");
+    libsokol.defineCMacro("__EMSCRIPTEN__", "1");
+    libsokol.addIncludeDir(include_path);
+    libsokol.install();
     
-    // build game code into an object
-    const game = libGame(b, target, mode, false);
-    game.install();
+    // the game code must be build as library with wasm32-freestanding
+    var wasm32_freestanding_target = target;
+    wasm32_freestanding_target.os_tag = .freestanding;
+    const libgame = b.addStaticLibrary("game", "src/pacman.zig");
+    libgame.setTarget(wasm32_freestanding_target);
+    libgame.setBuildMode(mode);
+    libgame.addPackagePath("sokol", "src/sokol/sokol.zig");
+    libgame.install();
     
+    // call the emcc linker step as a 'system command' zig build step which
+    // depends on the libsokol and libgame build steps
+    try fs.cwd().makePath("zig-out/web");
     const emcc = b.addSystemCommand(&.{
         emcc_path,
+        "-Os",
+        "--closure", "1",
         "src/emscripten/entry.c",
-        "-ozig-out/bin/pacman.html",
+        "-ozig-out/web/pacman.html",
         "--shell-file", "src/emscripten/shell.html",
-        libpath_option,
         "-Lzig-out/lib/",
         "-lgame",
         "-lsokol",
-        "-sUSE_WEBGL2",
-//        "-sERROR_ON_UNDEFINED_SYMBOLS=0",
+        "-sNO_FILESYSTEM=1",
+        "-sMALLOC='emmalloc'",
+        "-sASSERTIONS=0",
+        "-sEXPORTED_FUNCTIONS=['_malloc','_free','_main']",
     });
-//    emcc.step.dependOn(&sokol.step);
-    emcc.step.dependOn(&game.step);
+    emcc.step.dependOn(&libsokol.install_step.?.step);
+    emcc.step.dependOn(&libgame.install_step.?.step);
     
-    const exe = b.addExecutable("dummy", null);
-    exe.step.dependOn(&emcc.step);
-    exe.install();
-}
-
-// build the game code into a separate object, makes it easier to handle the separate Emscripten link step for WASM
-fn objGame(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_darwin: bool) *LibExeObjStep {
-    const obj = b.addObject("game", "src/pacman.zig");
-    obj.setTarget(target);
-    obj.setBuildMode(mode);
-    obj.addPackagePath("sokol", "src/sokol/sokol.zig");
-    if (cross_compiling_to_darwin) {
-        addDarwinCrossCompilePaths(b, obj);
-    }
-    return obj;
-}
-
-// build the game code into a separate object, makes it easier to handle the separate Emscripten link step for WASM
-fn libGame(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_darwin: bool) *LibExeObjStep {
-    const lib = b.addStaticLibrary("game", "src/pacman.zig");
-    lib.setTarget(target);
-    lib.setBuildMode(mode);
-    lib.addPackagePath("sokol", "src/sokol/sokol.zig");
-    if (cross_compiling_to_darwin) {
-        addDarwinCrossCompilePaths(b, lib);
-    }
-    return lib;
+    // get the emcc step to run on 'zig build'
+    b.getInstallStep().dependOn(&emcc.step);
+    
+    // a seperate run step using emrun
+    const emrun = b.addSystemCommand(&.{ emrun_path, "zig-out/web/pacman.html" });
+    emrun.step.dependOn(&emcc.step);
+    b.step("run", "Run pacman").dependOn(&emrun.step);
 }
 
 fn libSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *LibExeObjStep {
