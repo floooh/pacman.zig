@@ -6,6 +6,8 @@ Like https://github.com/floooh/pacman.c, but in Zig.
 
 Zig bindings for the sokol headers are here: https://github.com/floooh/sokol-zig
 
+[WASM version](https://floooh.github.io/pacman.zig/pacman.html)
+
 ## Build and Run
 
 Requires Zig version 0.9.0.
@@ -57,7 +59,7 @@ cd pacman.zig
 zig build --sysroot $(xcrun --sdk iphoneos --show-sdk-path) -Dtarget=aarch64-ios
 ```
 
-## Experimental browser support
+## Experimental web support
 
 Building the project to run in web browsers requires the Emscripten SDK to provide
 a sysroot and linker:
@@ -74,15 +76,17 @@ cd emsdk
 cd ..
 
 # build for wasm32-emscripten
-zig build -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
+zig build -Drelease-small -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
 ```
+
+The resulting .html, .js and .wasm files are under ```zig-out/web```.
 
 ...to build and start the result in a browser, add a 'run' argument to 'zig build', this
 uses the Emscripten SDK ```emrun``` tool to start a local webserver and the browser.
 Note that you need to hit ```Ctrl-C``` to exit after closing the browser:
 
 ```bash
-zig build run -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
+zig build run -Drelease-small -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
 ```
 
 Note that the Emscripten build currently requires a couple of hacks and workarounds in 
