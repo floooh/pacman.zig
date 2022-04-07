@@ -698,7 +698,7 @@ fn isTunnel(tile_pos: ivec2) bool {
 // check if a tile position is inside one of the two "red zones" where 
 // ghost are not allowed to move upward
 fn isRedZone(tile_pos: ivec2) bool {
-    return (tile_pos.x >= 11) and (tile_pos.x <= 16) and ((tile_pos.y ==14) or (tile_pos.y == 26));
+    return (tile_pos.x >= 11) and (tile_pos.x <= 16) and ((tile_pos.y == 14) or (tile_pos.y == 26));
 }
 
 // test if movement from a pixel position to a wanted position is possible,
