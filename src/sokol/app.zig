@@ -1,5 +1,10 @@
 // machine generated, do not edit
 
+
+// helper function to convert a C string to a Zig string slice
+fn cStrToZig(c_str: [*c]const u8) [:0]const u8 {
+  return @import("std").mem.span(c_str);
+}
 pub const max_touchpoints = 8;
 pub const max_mousebuttons = 3;
 pub const max_keycodes = 512;
@@ -26,7 +31,6 @@ pub const EventType = enum(i32) {
     UNFOCUSED,
     SUSPENDED,
     RESUMED,
-    UPDATE_CURSOR,
     QUIT_REQUESTED,
     CLIPBOARD_PASTED,
     FILES_DROPPED,
@@ -208,6 +212,11 @@ pub const IconDesc = extern struct {
     sokol_default: bool = false,
     images: [8]ImageDesc = [_]ImageDesc{.{}} ** 8,
 };
+pub const Allocator = extern struct {
+    alloc: ?fn(usize, ?*anyopaque) callconv(.C) ?*anyopaque = null,
+    free: ?fn(?*anyopaque, ?*anyopaque) callconv(.C) void = null,
+    user_data: ?*anyopaque = null,
+};
 pub const Desc = extern struct {
     init_cb: ?fn() callconv(.C) void = null,
     frame_cb: ?fn() callconv(.C) void = null,
@@ -228,14 +237,16 @@ pub const Desc = extern struct {
     fullscreen: bool = false,
     alpha: bool = false,
     window_title: [*c]const u8 = null,
-    user_cursor: bool = false,
     enable_clipboard: bool = false,
     clipboard_size: i32 = 0,
     enable_dragndrop: bool = false,
     max_dropped_files: i32 = 0,
     max_dropped_file_path_length: i32 = 0,
     icon: IconDesc = .{ },
+    allocator: Allocator = .{ },
     gl_force_gles2: bool = false,
+    gl_major_version: i32 = 0,
+    gl_minor_version: i32 = 0,
     win32_console_utf8: bool = false,
     win32_console_create: bool = false,
     win32_console_attach: bool = false,
@@ -266,6 +277,20 @@ pub const Html5FetchRequest = extern struct {
     buffer_ptr: ?*anyopaque = null,
     buffer_size: u32 = 0,
     user_data: ?*anyopaque = null,
+};
+pub const MouseCursor = enum(i32) {
+    DEFAULT = 0,
+    ARROW,
+    IBEAM,
+    CROSSHAIR,
+    POINTING_HAND,
+    RESIZE_EW,
+    RESIZE_NS,
+    RESIZE_NWSE,
+    RESIZE_NESW,
+    RESIZE_ALL,
+    NOT_ALLOWED,
+    NUM,
 };
 pub extern fn sapp_isvalid() bool;
 pub fn isvalid() bool {
@@ -339,6 +364,14 @@ pub extern fn sapp_mouse_locked() bool;
 pub fn mouseLocked() bool {
     return sapp_mouse_locked();
 }
+pub extern fn sapp_set_mouse_cursor(MouseCursor) void;
+pub fn setMouseCursor(cursor: MouseCursor) void {
+    sapp_set_mouse_cursor(cursor);
+}
+pub extern fn sapp_get_mouse_cursor() MouseCursor;
+pub fn getMouseCursor() MouseCursor {
+    return sapp_get_mouse_cursor();
+}
 pub extern fn sapp_userdata() ?*anyopaque;
 pub fn userdata() ?*anyopaque {
     return sapp_userdata();
@@ -377,7 +410,7 @@ pub fn setClipboardString(str: [:0]const u8) void {
 }
 pub extern fn sapp_get_clipboard_string() [*c]const u8;
 pub fn getClipboardString() [:0]const u8 {
-    return sapp_get_clipboard_string();
+    return cStrToZig(sapp_get_clipboard_string());
 }
 pub extern fn sapp_set_window_title([*c]const u8) void;
 pub fn setWindowTitle(str: [:0]const u8) void {
@@ -393,11 +426,19 @@ pub fn getNumDroppedFiles() i32 {
 }
 pub extern fn sapp_get_dropped_file_path(i32) [*c]const u8;
 pub fn getDroppedFilePath(index: i32) [:0]const u8 {
-    return sapp_get_dropped_file_path(index);
+    return cStrToZig(sapp_get_dropped_file_path(index));
 }
 pub extern fn sapp_run([*c]const Desc) void;
 pub fn run(desc: Desc) void {
     sapp_run(&desc);
+}
+pub extern fn sapp_egl_get_display() ?*const anyopaque;
+pub fn eglGetDisplay() ?*const anyopaque {
+    return sapp_egl_get_display();
+}
+pub extern fn sapp_egl_get_context() ?*const anyopaque;
+pub fn eglGetContext() ?*const anyopaque {
+    return sapp_egl_get_context();
 }
 pub extern fn sapp_gles2() bool;
 pub fn gles2() bool {

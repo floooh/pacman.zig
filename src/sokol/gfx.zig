@@ -1,5 +1,10 @@
 // machine generated, do not edit
 
+
+// helper function to convert a C string to a Zig string slice
+fn cStrToZig(c_str: [*c]const u8) [:0]const u8 {
+  return @import("std").mem.span(c_str);
+}
 // helper function to convert "anything" to a Range struct
 pub fn asRange(val: anytype) Range {
     const type_info = @typeInfo(@TypeOf(val));
@@ -649,6 +654,11 @@ pub const ContextDesc = extern struct {
     d3d11: D3d11ContextDesc = .{ },
     wgpu: WgpuContextDesc = .{ },
 };
+pub const Allocator = extern struct {
+    alloc: ?fn(usize, ?*anyopaque) callconv(.C) ?*anyopaque = null,
+    free: ?fn(?*anyopaque, ?*anyopaque) callconv(.C) void = null,
+    user_data: ?*anyopaque = null,
+};
 pub const Desc = extern struct {
     _start_canary: u32 = 0,
     buffer_pool_size: i32 = 0,
@@ -660,6 +670,7 @@ pub const Desc = extern struct {
     uniform_buffer_size: i32 = 0,
     staging_buffer_size: i32 = 0,
     sampler_cache_size: i32 = 0,
+    allocator: Allocator = .{ },
     context: ContextDesc = .{ },
     _end_canary: u32 = 0,
 };
@@ -742,6 +753,10 @@ pub fn appendBuffer(buf: Buffer, data: Range) i32 {
 pub extern fn sg_query_buffer_overflow(Buffer) bool;
 pub fn queryBufferOverflow(buf: Buffer) bool {
     return sg_query_buffer_overflow(buf);
+}
+pub extern fn sg_query_buffer_will_overflow(Buffer, usize) bool;
+pub fn queryBufferWillOverflow(buf: Buffer, size: usize) bool {
+    return sg_query_buffer_will_overflow(buf, size);
 }
 pub extern fn sg_begin_default_pass([*c]const PassAction, i32, i32) void;
 pub fn beginDefaultPass(pass_action: PassAction, width: i32, height: i32) void {

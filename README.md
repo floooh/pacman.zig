@@ -71,8 +71,8 @@ cd pacman.zig
 # install emsdk into a subdirectory
 git clone https://github.com/emscripten-core/emsdk.git
 cd emsdk
-./emsdk install latest
-./emsdk activate latest
+./emsdk install 3.1.20
+./emsdk activate 3.1.20
 cd ..
 
 # build for wasm32-emscripten
