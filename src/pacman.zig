@@ -782,7 +782,7 @@ fn spriteImagePacman(dir: Dir, tick: u32) void {
         .{ 44, 46, 48, 46 }, // horizontal (needs flipx)
         .{ 45, 47, 48, 47 }  // vertical (needs flipy)
     };
-    const phase = (tick / 4) & 3;
+    const phase = (tick / 2) & 3;
     var spr = spritePacman();
     spr.enabled = true;
     spr.tile = tiles[@enumToInt(dir) & 1][phase];
