@@ -14,7 +14,7 @@ pub fn build(b: *Builder) void {
     }
     else {
         buildWasm(b, target, mode) catch |err| {
-            std.log.err("{s}", .{ err });
+            std.log.err("{}", .{ err });
         };
     }
 }
@@ -32,7 +32,7 @@ fn buildNative(b: *Builder, target: CrossTarget, mode: Mode) !void {
     }
     exe.install();
     b.step("run", "Run pacman").dependOn(&exe.run().step);
-    
+
     // for iOS generate a valid app bundle directory structure
     if (target.getOsTag() == .ios) {
         const install_path = try fs.path.join(b.allocator, &.{ b.install_path, "bin", "pacman" });
@@ -42,7 +42,7 @@ fn buildNative(b: *Builder, target: CrossTarget, mode: Mode) !void {
     }
 }
 
-// building for WASM/HTML5 requires a couple of hacks and workarounds: 
+// building for WASM/HTML5 requires a couple of hacks and workarounds:
 //
 //  - emcc must be used as linker instead of the zig linker to implement
 //    the additional "Emscripten magic" (e.g. generating the .html and .js
@@ -54,7 +54,7 @@ fn buildNative(b: *Builder, target: CrossTarget, mode: Mode) !void {
 //    sysroot headers
 //  - the Zig code must *not* be compiled with wasm32-emscripten, because parts
 //    of the Zig stdlib doesn't compile, so instead use wasm32-freestanding
-//  - the game code in pacman.zig is compiled into a library, and a 
+//  - the game code in pacman.zig is compiled into a library, and a
 //    C file (src/emscripten/entry.c) is used as entry point, which then
 //    calls an exported entry function "emsc_main()" in pacman.zig instead
 //    of the regular zig main function.
@@ -71,7 +71,7 @@ fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
     defer b.allocator.free(emcc_path);
     const emrun_path = try fs.path.join(b.allocator, &.{ b.sysroot.?, "../../emrun" });
     defer b.allocator.free(emrun_path);
-    
+
     // for some reason, the sysroot/include path must be provided separately
     const include_path = try fs.path.join(b.allocator, &.{ b.sysroot.?, "include"});
     defer b.allocator.free(include_path);
@@ -81,9 +81,9 @@ fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
     wasm32_emscripten_target.os_tag = .emscripten;
     const libsokol = libSokol(b, wasm32_emscripten_target, mode, false, "");
     libsokol.defineCMacro("__EMSCRIPTEN__", "1");
-    libsokol.addIncludeDir(include_path);
+    libsokol.addIncludePath(include_path);
     libsokol.install();
-    
+
     // the game code must be build as library with wasm32-freestanding
     var wasm32_freestanding_target = target;
     wasm32_freestanding_target.os_tag = .freestanding;
@@ -92,7 +92,7 @@ fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
     libgame.setBuildMode(mode);
     libgame.addPackagePath("sokol", "src/sokol/sokol.zig");
     libgame.install();
-    
+
     // call the emcc linker step as a 'system command' zig build step which
     // depends on the libsokol and libgame build steps
     try fs.cwd().makePath("zig-out/web");
@@ -113,10 +113,10 @@ fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
     });
     emcc.step.dependOn(&libsokol.install_step.?.step);
     emcc.step.dependOn(&libgame.install_step.?.step);
-    
+
     // get the emcc step to run on 'zig build'
     b.getInstallStep().dependOn(&emcc.step);
-    
+
     // a seperate run step using emrun
     const emrun = b.addSystemCommand(&.{ emrun_path, "zig-out/web/pacman.html" });
     emrun.step.dependOn(&emcc.step);
@@ -171,9 +171,9 @@ fn libSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_dar
 
 fn addDarwinCrossCompilePaths(b: *Builder, step: *LibExeObjStep) void {
     checkDarwinSysRoot(b);
-    step.addLibPath("/usr/lib");
-    step.addSystemIncludeDir("/usr/include");
-    step.addFrameworkDir("/System/Library/Frameworks");
+    step.addLibraryPath("/usr/lib");
+    step.addSystemIncludePath("/usr/include");
+    step.addFrameworkPath("/System/Library/Frameworks");
 }
 
 fn checkDarwinSysRoot(b: *Builder) void {
