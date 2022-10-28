@@ -258,11 +258,11 @@ const Vertex = packed struct {
 };
 
 // callback function signature for procedural sounds
-const SoundFunc = fn(usize) void;
+const SoundFunc = *const fn(usize) void;
 
 // a sound effect description
 const SoundDesc = struct {
-    func: ?SoundFunc = null,    // optional pointer to sound effect callback if this is a procedural sound
+    func: ?SoundFunc = null, // optional pointer to sound effect callback if this is a procedural sound
     dump: ?[]const u32 = null,  // optional register dump data slice
     voice: [NumVoices]bool = .{false} ** NumVoices,
 };
@@ -2325,7 +2325,7 @@ fn gfxCreateResources() void {
     // create a quad-vertex-buffer for rendering the offscreen render target to the display
     const quad_verts = [_]f32{ 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0 };
     state.gfx.display.quad_vbuf = sg.makeBuffer(.{
-        .data = sg.asRange(quad_verts),
+        .data = sg.asRange(&quad_verts),
     });
 
     // create pipeline and shader for rendering into offscreen render target
@@ -2427,7 +2427,7 @@ fn gfxCreateResources() void {
             .wrap_u = .CLAMP_TO_EDGE,
             .wrap_v = .CLAMP_TO_EDGE,
         };
-        img_desc.data.subimage[0][0] = sg.asRange(data.tile_pixels);
+        img_desc.data.subimage[0][0] = sg.asRange(&data.tile_pixels);
         state.gfx.offscreen.tile_img = sg.makeImage(img_desc);
     }
 
@@ -2442,7 +2442,7 @@ fn gfxCreateResources() void {
             .wrap_u = .CLAMP_TO_EDGE,
             .wrap_v = .CLAMP_TO_EDGE,
         };
-        img_desc.data.subimage[0][0] = sg.asRange(data.color_palette);
+        img_desc.data.subimage[0][0] = sg.asRange(&data.color_palette);
         state.gfx.offscreen.palette_img = sg.makeImage(img_desc);
     }
 
