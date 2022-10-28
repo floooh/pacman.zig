@@ -126,7 +126,7 @@ const FreezeWon:        u8 = (1<<4);
 const ivec2 = struct {
     x: i16 = 0,
     y: i16 = 0,
-    
+
     fn add(v0: ivec2, v1: ivec2) ivec2 {
         return .{ .x = v0.x + v1.x, .y = v0.y + v1.y };
     }
@@ -290,7 +290,7 @@ const Sound = struct {
 // all mutable state is in a single nested global
 const State = struct {
     game_mode: GameMode = .Intro,
-    
+
     timing: struct {
         tick:          u32 = 0,
         laptime_store: u64 = 0,
@@ -310,7 +310,7 @@ const State = struct {
     intro: struct {
         started: Trigger = .{},
     } = .{},
-    
+
     game: struct {
         pacman: Pacman = .{},
         ghosts: [NumGhosts]Ghost = .{.{}} ** NumGhosts,
@@ -324,7 +324,7 @@ const State = struct {
         num_dots_eaten:     u8 = 0,
         num_ghosts_eaten:   u8 = 0,
         active_fruit:       Fruit = .None,
-        
+
         global_dot_counter_active: bool = false,
         global_dot_counter: u16 = 0,
 
@@ -533,7 +533,7 @@ fn before(t: Trigger, ticks: u32) bool {
     }
 }
 
-// enable/disable input 
+// enable/disable input
 fn inputEnable() void {
     state.input.enabled = true;
 }
@@ -659,9 +659,9 @@ fn ghostHouseTargetPos(t: GhostType) ivec2 {
 // ghost scatter target positions in tile coords
 fn scatterTargetPos(t: GhostType) ivec2 {
     return switch (t) {
-        .Blinky => .{ .x=25, .y= 0 }, 
+        .Blinky => .{ .x=25, .y= 0 },
         .Pinky  => .{ .x= 2, .y= 0 },
-        .Inky   => .{ .x=27, .y=34 }, 
+        .Inky   => .{ .x=27, .y=34 },
         .Clyde  => .{ .x= 0, .y=34 },
     };
 }
@@ -695,7 +695,7 @@ fn isTunnel(tile_pos: ivec2) bool {
     return (tile_pos.y == 17) and ((tile_pos.x <= 5) or (tile_pos.x >= 22));
 }
 
-// check if a tile position is inside one of the two "red zones" where 
+// check if a tile position is inside one of the two "red zones" where
 // ghost are not allowed to move upward
 fn isRedZone(tile_pos: ivec2) bool {
     return (tile_pos.x >= 11) and (tile_pos.x <= 16) and ((tile_pos.y == 14) or (tile_pos.y == 26));
@@ -1078,9 +1078,9 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
             }
         },
         .House => {
-            // Ghosts only remain in the "house state" after a new game round 
+            // Ghosts only remain in the "house state" after a new game round
             // has been started. The conditions when ghosts leave the house
-            // are a bit complicated, best to check the Pacman Dossier for the details. 
+            // are a bit complicated, best to check the Pacman Dossier for the details.
             if (afterOnce(state.game.force_leave_house, 4*60)) {
                 // if Pacman hasn't eaten dots for 4 seconds, the next ghost
                 // is forced out of the house
@@ -1193,7 +1193,7 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
                     ghost.target_pos = ivec2.add(blinky_pos, ivec2.mul(d, .{.x=2,.y=2}));
                 },
                 .Clyde => {
-                    // if Clyde is far away from Pacman, he chases Pacman, 
+                    // if Clyde is far away from Pacman, he chases Pacman,
                     // but if close he moves towards the scatter target
                     if (ivec2.squaredDistance(pixelToTilePos(ghost.actor.pos), pm_pos) > 64) {
                         ghost.target_pos = pm_pos;
@@ -1206,7 +1206,7 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
         },
         .Frightened => {
             // in frightened state just select a random target position
-            // this has the effect that ghosts in frightened state 
+            // this has the effect that ghosts in frightened state
             // move in a random direction at each intersection
             ghost.target_pos = .{
                 .x = @intCast(i16, xorshift32() % DisplayTilesX),
@@ -1280,7 +1280,7 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
             }
             ghost.actor.dir = ghost.next_dir;
             // force movement
-            return true;            
+            return true;
         },
         else => {
             // scatter/chase/frightened: just head towards the current target point
@@ -1381,22 +1381,22 @@ fn gameUpdateDotsEaten() void {
 }
 
 // Update the dot counters used to decide whether ghosts must leave the house.
-// 
+//
 // This is called each time Pacman eats a dot.
-// 
+//
 // Each ghost has a dot limit which is reset at the start of a round. Each time
 // Pacman eats a dot, the highest priority ghost in the ghost house counts
 // down its dot counter.
-// 
+//
 // When the ghost's dot counter reaches zero the ghost leaves the house
 // and the next highest-priority dot counter starts counting.
-// 
+//
 // If a life is lost, the personal dot counters are deactivated and instead
 // a global dot counter is used.
-// 
+//
 // If pacman doesn't eat dots for a while, the next ghost is forced out of the
 // house using a timer.
-// 
+//
 fn gameUpdateGhostHouseDotCounters() void {
     // if the new round was started because Pacman lost a life, use the global
     // dot counter (this mode will be deactivated again after all ghosts left the
@@ -1465,15 +1465,15 @@ fn gameInitPlayfield() void {
        \\L.guuh.rl.guuyxuuh.rl.guuh.R
        \\L......rl....rl....rl......R
        \\2BBBBf.rzbbf rl ebbwl.eBBBB3
-       \\     L.rxuuh gh guuyl.R     
-       \\     L.rl          rl.R     
-       \\     L.rl mjs--tjn rl.R     
+       \\     L.rxuuh gh guuyl.R
+       \\     L.rl          rl.R
+       \\     L.rl mjs--tjn rl.R
        \\UUUUUh.gh i      q gh.gUUUUU
-       \\      .   i      q   .      
+       \\      .   i      q   .
        \\BBBBBf.ef i      q ef.eBBBBB
-       \\     L.rl okkkkkkp rl.R     
-       \\     L.rl          rl.R     
-       \\     L.rl ebbbbbbf rl.R     
+       \\     L.rl okkkkkkp rl.R
+       \\     L.rl          rl.R
+       \\     L.rl ebbbbbbf rl.R
        \\0UUUUh.gh guuyxuuh gh.gUUUU1
        \\L............rl............R
        \\L.ebbf.ebbbf.rl.ebbbf.ebbf.R
@@ -1533,7 +1533,7 @@ fn gameRoundInit() void {
         gameInitPlayfield();
     }
     else {
-        // if the previous round was lost, use the global dot counter 
+        // if the previous round was lost, use the global dot counter
         // to detect when ghosts should leave the ghost house instead
         // of the per-ghost dot counter
         if (state.game.num_lives != NumLives) {
@@ -1605,7 +1605,7 @@ fn gameRoundInit() void {
         .state = .House,
         .dot_limit = 60
     };
-    
+
     // reset sprites
     spritePacman().* = .{ .enabled = true, .color = ColorCodePacman };
     spriteBlinky().* = .{ .enabled = true, .color = ColorCodeBlinky };
@@ -1791,7 +1791,7 @@ fn introTick() void {
     for (names) |name, i| {
         const color: u8 = 2 * @intCast(u8,i) + 1;
         const y: i16 = 3 * @intCast(i16,i) + 6;
-        
+
         // 2*3 tiles ghost image
         delay += 30;
         if (afterOnce(state.intro.started, delay)) {
@@ -1944,7 +1944,7 @@ fn gfxText(pos: ivec2, text: []const u8) void {
 }
 
 // print colored score number into tile+color buffers from right to left(!),
-// scores are /10, the last printed number is always 0, 
+// scores are /10, the last printed number is always 0,
 // a zero-score will print as '00' (this is the same as on
 // the Pacman arcade machine)
 fn gfxColorScore(pos: ivec2, color_code: u8, score: u32) void {
@@ -2283,7 +2283,7 @@ fn gfxDecodeTiles() void {
 fn gfxDecodeColorPalette() void {
     // Expand the 8-bit palette ROM items into RGBA8 items.
     // The 8-bit palette item bits are packed like this:
-    // 
+    //
     // | 7| 6| 5| 4| 3| 2| 1| 0|
     // |B1|B0|G2|G1|G0|R2|R1|R0|
     //
@@ -2383,7 +2383,7 @@ fn gfxCreateResources() void {
             else => unreachable
         };
         shd_desc.fs.source = switch(sg.queryBackend()) {
-            .D3D11       => @embedFile("shaders/display_fs.hlsl"), 
+            .D3D11       => @embedFile("shaders/display_fs.hlsl"),
             .GLCORE33    => @embedFile("shaders/display_fs.v330.glsl"),
             .GLES2       => @embedFile("shaders/display_fs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_fs.metal"),
@@ -2462,7 +2462,7 @@ fn soundInit() void {
     const samples_per_sec: i32 = saudio.sampleRate();
     state.audio.sample_duration_ns = @divTrunc(1_000_000_000, samples_per_sec);
 
-    // compute number of 96kHz ticks per sample tick (the Namco sound 
+    // compute number of 96kHz ticks per sample tick (the Namco sound
     // generator runs at 96kHz), times 1000 for increased precision
     state.audio.voice_tick_period = @divTrunc(96_000_000, samples_per_sec);
 }
@@ -2594,7 +2594,7 @@ fn soundStart(sound_slot: usize, desc: SoundDesc) void {
     }
 }
 
-// start procedural sound effect to eat dot (there's two separate 
+// start procedural sound effect to eat dot (there's two separate
 // sound effects for eating dots, one going up and one going down)
 fn soundEatDot(dots_eaten: u32) void {
     if (0 != (dots_eaten & 1)) {
@@ -2868,7 +2868,7 @@ export fn emsc_main() void {
 //    |    |              +-- 20 bits frequency
 //    |    +-- 3 bits waveform
 //    +-- 4 bits volume
- 
+
 const SoundDumpPrelude = [490]u32 {
     0xE20002E0, 0xF0001700,
     0xD20002E0, 0xF0001700,
