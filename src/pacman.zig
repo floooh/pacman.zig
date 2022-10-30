@@ -251,7 +251,7 @@ const DebugMarker = struct {
 };
 
 // vertex-structure for rendering background tiles and sprites
-const Vertex = packed struct {
+const Vertex = extern struct {
     x: f32, y: f32,     // 2D-pos
     u: f32, v: f32,     // texcoords
     attr: u32,          // color code and opacity
@@ -1458,27 +1458,27 @@ fn gameInitPlayfield() void {
        \\0UUUUUUUUUUUU45UUUUUUUUUUUU1
        \\L............rl............R
        \\L.ebbf.ebbbf.rl.ebbbf.ebbf.R
-       \\LPr  l.r   l.rl.r   l.r  lPR
+       \\LPr__l.r___l.rl.r___l.r__lPR
        \\L.guuh.guuuh.gh.guuuh.guuh.R
        \\L..........................R
        \\L.ebbf.ef.ebbbbbbf.ef.ebbf.R
        \\L.guuh.rl.guuyxuuh.rl.guuh.R
        \\L......rl....rl....rl......R
-       \\2BBBBf.rzbbf rl ebbwl.eBBBB3
-       \\     L.rxuuh gh guuyl.R
-       \\     L.rl          rl.R
-       \\     L.rl mjs--tjn rl.R
-       \\UUUUUh.gh i      q gh.gUUUUU
-       \\      .   i      q   .
-       \\BBBBBf.ef i      q ef.eBBBBB
-       \\     L.rl okkkkkkp rl.R
-       \\     L.rl          rl.R
-       \\     L.rl ebbbbbbf rl.R
-       \\0UUUUh.gh guuyxuuh gh.gUUUU1
+       \\2BBBBf.rzbbf_rl_ebbwl.eBBBB3
+       \\_____L.rxuuh_gh_guuyl.R_____
+       \\_____L.rl__________rl.R_____
+       \\_____L.rl_mjs--tjn_rl.R_____
+       \\UUUUUh.gh_i______q_gh.gUUUUU
+       \\______.___i______q___.______
+       \\BBBBBf.ef_i______q_ef.eBBBBB
+       \\_____L.rl_okkkkkkp_rl.R_____
+       \\_____L.rl__________rl.R_____
+       \\_____L.rl_ebbbbbbf_rl.R_____
+       \\0UUUUh.gh_guuyxuuh_gh.gUUUU1
        \\L............rl............R
        \\L.ebbf.ebbbf.rl.ebbbf.ebbf.R
        \\L.guyl.guuuh.gh.guuuh.rxuh.R
-       \\LP..rl.......  .......rl..PR
+       \\LP..rl.......__.......rl..PR
        \\6bf.rl.ef.ebbbbbbf.ef.rl.eb8
        \\7uh.gh.rl.guuyxuuh.rl.gh.gu9
        \\L......rl....rl....rl......R
@@ -1489,7 +1489,7 @@ fn gameInitPlayfield() void {
        ;
     // map ASCII to tile codes
     var t = [_]u8{TileCodeDot} ** 128;
-    t[' ']=0x40; t['0']=0xD1; t['1']=0xD0; t['2']=0xD5; t['3']=0xD4; t['4']=0xFB;
+    t['_']=0x40; t['0']=0xD1; t['1']=0xD0; t['2']=0xD5; t['3']=0xD4; t['4']=0xFB;
     t['5']=0xFA; t['6']=0xD7; t['7']=0xD9; t['8']=0xD6; t['9']=0xD8; t['U']=0xDB;
     t['L']=0xD3; t['R']=0xD2; t['B']=0xDC; t['b']=0xDF; t['e']=0xE7; t['f']=0xE6;
     t['g']=0xEB; t['h']=0xEA; t['l']=0xE8; t['r']=0xE9; t['u']=0xE5; t['w']=0xF5;
