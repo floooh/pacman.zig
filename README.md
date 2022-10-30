@@ -10,7 +10,7 @@ Zig bindings for the sokol headers are here: https://github.com/floooh/sokol-zig
 
 ## Build and Run
 
-Requires Zig version 0.9.0.
+Requires Zig version 0.10.0
 
 Zig installation: https://github.com/ziglang/zig/wiki/Install-Zig-from-a-Package-Manager
 
@@ -27,7 +27,7 @@ On Linux, you need to install the usual dev-packages for GL-, X11- and ALSA-deve
 
 ## Experimental iOS support
 
-NOTE: this is mostly a "it technically works" demo, the game can't be played with 
+NOTE: this is mostly a "it technically works" demo, the game can't be played with
 touch inputs yet, only tapping is detected to get from the intro screen into
 the game loop.
 
@@ -48,7 +48,7 @@ open -a Simulator.app
 xcrun simctl install booted zig-out/bin/Pacman.app
 
 # run the game with:
-xcrun simctl launch booted Pacman.zig 
+xcrun simctl launch booted Pacman.zig
 ```
 
 Building for an actual device works like this, but installing and running hasn't been tested yet:
@@ -89,5 +89,5 @@ Note that you need to hit ```Ctrl-C``` to exit after closing the browser:
 zig build run -Drelease-small -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
 ```
 
-Note that the Emscripten build currently requires a couple of hacks and workarounds in 
+Note that the Emscripten build currently requires a couple of hacks and workarounds in
 the build process, details are in the build.zig file.
