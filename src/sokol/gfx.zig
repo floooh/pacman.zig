@@ -1,7 +1,6 @@
 // machine generated, do not edit
 
 const builtin = @import("builtin");
-const meta = @import("std").meta;
 
 // helper function to convert a C string to a Zig string slice
 fn cStrToZig(c_str: [*c]const u8) [:0]const u8 {
@@ -19,10 +18,7 @@ pub fn asRange(val: anytype) Range {
             }
         },
         .Struct, .Array => {
-            switch (builtin.zig_backend) {
-                .stage1 => return .{ .ptr = &val, .size = @sizeOf(@TypeOf(val)) },
-                else => @compileError("Structs and arrays must be passed as pointers to asRange"),
-            }
+            @compileError("Structs and arrays must be passed as pointers to asRange");
         },
         else => {
             @compileError("Cannot convert to range!");
@@ -105,6 +101,7 @@ pub const PixelFormat = enum(i32) {
     RG16SI,
     RG16F,
     RGBA8,
+    SRGB8A8,
     RGBA8SN,
     RGBA8UI,
     RGBA8SI,
@@ -281,6 +278,8 @@ pub const VertexFormat = enum(i32) {
     SHORT4N,
     USHORT4N,
     UINT10_N2,
+    HALF2,
+    HALF4,
     NUM,
 };
 pub const VertexStep = enum(i32) {
@@ -621,34 +620,214 @@ pub const PipelineInfo = extern struct {
 pub const PassInfo = extern struct {
     slot: SlotInfo = .{ },
 };
+pub const LogItem = enum(i32) {
+    OK,
+    MALLOC_FAILED,
+    GL_TEXTURE_FORMAT_NOT_SUPPORTED,
+    GL_3D_TEXTURES_NOT_SUPPORTED,
+    GL_ARRAY_TEXTURES_NOT_SUPPORTED,
+    GL_SHADER_COMPILATION_FAILED,
+    GL_SHADER_LINKING_FAILED,
+    GL_VERTEX_ATTRIBUTE_NOT_FOUND_IN_SHADER,
+    GL_FRAMEBUFFER_INCOMPLETE,
+    GL_MSAA_FRAMEBUFFER_INCOMPLETE,
+    D3D11_CREATE_BUFFER_FAILED,
+    D3D11_CREATE_DEPTH_TEXTURE_UNSUPPORTED_PIXEL_FORMAT,
+    D3D11_CREATE_DEPTH_TEXTURE_FAILED,
+    D3D11_CREATE_2D_TEXTURE_UNSUPPORTED_PIXEL_FORMAT,
+    D3D11_CREATE_2D_TEXTURE_FAILED,
+    D3D11_CREATE_2D_SRV_FAILED,
+    D3D11_CREATE_3D_TEXTURE_UNSUPPORTED_PIXEL_FORMAT,
+    D3D11_CREATE_3D_TEXTURE_FAILED,
+    D3D11_CREATE_3D_SRV_FAILED,
+    D3D11_CREATE_MSAA_TEXTURE_FAILED,
+    D3D11_CREATE_SAMPLER_STATE_FAILED,
+    D3D11_LOAD_D3DCOMPILER_47_DLL_FAILED,
+    D3D11_SHADER_COMPILATION_FAILED,
+    D3D11_SHADER_COMPILATION_OUTPUT,
+    D3D11_CREATE_CONSTANT_BUFFER_FAILED,
+    D3D11_CREATE_INPUT_LAYOUT_FAILED,
+    D3D11_CREATE_RASTERIZER_STATE_FAILED,
+    D3D11_CREATE_DEPTH_STENCIL_STATE_FAILED,
+    D3D11_CREATE_BLEND_STATE_FAILED,
+    D3D11_CREATE_RTV_FAILED,
+    D3D11_CREATE_DSV_FAILED,
+    D3D11_MAP_FOR_UPDATE_BUFFER_FAILED,
+    D3D11_MAP_FOR_APPEND_BUFFER_FAILED,
+    D3D11_MAP_FOR_UPDATE_IMAGE_FAILED,
+    METAL_TEXTURE_FORMAT_NOT_SUPPORTED,
+    METAL_SHADER_COMPILATION_FAILED,
+    METAL_SHADER_CREATION_FAILED,
+    METAL_SHADER_COMPILATION_OUTPUT,
+    METAL_VERTEX_SHADER_ENTRY_NOT_FOUND,
+    METAL_FRAGMENT_SHADER_ENTRY_NOT_FOUND,
+    METAL_CREATE_RPS_FAILED,
+    METAL_CREATE_RPS_OUTPUT,
+    WGPU_MAP_UNIFORM_BUFFER_FAILED,
+    WGPU_STAGING_BUFFER_FULL_COPY_TO_BUFFER,
+    WGPU_STAGING_BUFFER_FULL_COPY_TO_TEXTURE,
+    WGPU_RESET_STATE_CACHE_FIXME,
+    WGPU_ACTIVATE_CONTEXT_FIXME,
+    UNINIT_BUFFER_ACTIVE_CONTEXT_MISMATCH,
+    UNINIT_IMAGE_ACTIVE_CONTEXT_MISMATCH,
+    UNINIT_SHADER_ACTIVE_CONTEXT_MISMATCH,
+    UNINIT_PIPELINE_ACTIVE_CONTEXT_MISMATCH,
+    UNINIT_PASS_ACTIVE_CONTEXT_MISMATCH,
+    IDENTICAL_COMMIT_LISTENER,
+    COMMIT_LISTENER_ARRAY_FULL,
+    TRACE_HOOKS_NOT_ENABLED,
+    DEALLOC_BUFFER_INVALID_STATE,
+    DEALLOC_IMAGE_INVALID_STATE,
+    DEALLOC_SHADER_INVALID_STATE,
+    DEALLOC_PIPELINE_INVALID_STATE,
+    DEALLOC_PASS_INVALID_STATE,
+    INIT_BUFFER_INVALID_STATE,
+    INIT_IMAGE_INVALID_STATE,
+    INIT_SHADER_INVALID_STATE,
+    INIT_PIPELINE_INVALID_STATE,
+    INIT_PASS_INVALID_STATE,
+    UNINIT_BUFFER_INVALID_STATE,
+    UNINIT_IMAGE_INVALID_STATE,
+    UNINIT_SHADER_INVALID_STATE,
+    UNINIT_PIPELINE_INVALID_STATE,
+    UNINIT_PASS_INVALID_STATE,
+    FAIL_BUFFER_INVALID_STATE,
+    FAIL_IMAGE_INVALID_STATE,
+    FAIL_SHADER_INVALID_STATE,
+    FAIL_PIPELINE_INVALID_STATE,
+    FAIL_PASS_INVALID_STATE,
+    BUFFER_POOL_EXHAUSTED,
+    IMAGE_POOL_EXHAUSTED,
+    SHADER_POOL_EXHAUSTED,
+    PIPELINE_POOL_EXHAUSTED,
+    PASS_POOL_EXHAUSTED,
+    DRAW_WITHOUT_BINDINGS,
+    VALIDATE_BUFFERDESC_CANARY,
+    VALIDATE_BUFFERDESC_SIZE,
+    VALIDATE_BUFFERDESC_DATA,
+    VALIDATE_BUFFERDESC_DATA_SIZE,
+    VALIDATE_BUFFERDESC_NO_DATA,
+    VALIDATE_IMAGEDATA_NODATA,
+    VALIDATE_IMAGEDATA_DATA_SIZE,
+    VALIDATE_IMAGEDESC_CANARY,
+    VALIDATE_IMAGEDESC_WIDTH,
+    VALIDATE_IMAGEDESC_HEIGHT,
+    VALIDATE_IMAGEDESC_RT_PIXELFORMAT,
+    VALIDATE_IMAGEDESC_NONRT_PIXELFORMAT,
+    VALIDATE_IMAGEDESC_MSAA_BUT_NO_RT,
+    VALIDATE_IMAGEDESC_NO_MSAA_RT_SUPPORT,
+    VALIDATE_IMAGEDESC_RT_IMMUTABLE,
+    VALIDATE_IMAGEDESC_RT_NO_DATA,
+    VALIDATE_IMAGEDESC_INJECTED_NO_DATA,
+    VALIDATE_IMAGEDESC_DYNAMIC_NO_DATA,
+    VALIDATE_IMAGEDESC_COMPRESSED_IMMUTABLE,
+    VALIDATE_SHADERDESC_CANARY,
+    VALIDATE_SHADERDESC_SOURCE,
+    VALIDATE_SHADERDESC_BYTECODE,
+    VALIDATE_SHADERDESC_SOURCE_OR_BYTECODE,
+    VALIDATE_SHADERDESC_NO_BYTECODE_SIZE,
+    VALIDATE_SHADERDESC_NO_CONT_UBS,
+    VALIDATE_SHADERDESC_NO_CONT_UB_MEMBERS,
+    VALIDATE_SHADERDESC_NO_UB_MEMBERS,
+    VALIDATE_SHADERDESC_UB_MEMBER_NAME,
+    VALIDATE_SHADERDESC_UB_SIZE_MISMATCH,
+    VALIDATE_SHADERDESC_UB_ARRAY_COUNT,
+    VALIDATE_SHADERDESC_UB_STD140_ARRAY_TYPE,
+    VALIDATE_SHADERDESC_NO_CONT_IMGS,
+    VALIDATE_SHADERDESC_IMG_NAME,
+    VALIDATE_SHADERDESC_ATTR_NAMES,
+    VALIDATE_SHADERDESC_ATTR_SEMANTICS,
+    VALIDATE_SHADERDESC_ATTR_STRING_TOO_LONG,
+    VALIDATE_PIPELINEDESC_CANARY,
+    VALIDATE_PIPELINEDESC_SHADER,
+    VALIDATE_PIPELINEDESC_NO_ATTRS,
+    VALIDATE_PIPELINEDESC_LAYOUT_STRIDE4,
+    VALIDATE_PIPELINEDESC_ATTR_NAME,
+    VALIDATE_PIPELINEDESC_ATTR_SEMANTICS,
+    VALIDATE_PASSDESC_CANARY,
+    VALIDATE_PASSDESC_NO_COLOR_ATTS,
+    VALIDATE_PASSDESC_NO_CONT_COLOR_ATTS,
+    VALIDATE_PASSDESC_IMAGE,
+    VALIDATE_PASSDESC_MIPLEVEL,
+    VALIDATE_PASSDESC_FACE,
+    VALIDATE_PASSDESC_LAYER,
+    VALIDATE_PASSDESC_SLICE,
+    VALIDATE_PASSDESC_IMAGE_NO_RT,
+    VALIDATE_PASSDESC_COLOR_INV_PIXELFORMAT,
+    VALIDATE_PASSDESC_DEPTH_INV_PIXELFORMAT,
+    VALIDATE_PASSDESC_IMAGE_SIZES,
+    VALIDATE_PASSDESC_IMAGE_SAMPLE_COUNTS,
+    VALIDATE_BEGINPASS_PASS,
+    VALIDATE_BEGINPASS_IMAGE,
+    VALIDATE_APIP_PIPELINE_VALID_ID,
+    VALIDATE_APIP_PIPELINE_EXISTS,
+    VALIDATE_APIP_PIPELINE_VALID,
+    VALIDATE_APIP_SHADER_EXISTS,
+    VALIDATE_APIP_SHADER_VALID,
+    VALIDATE_APIP_ATT_COUNT,
+    VALIDATE_APIP_COLOR_FORMAT,
+    VALIDATE_APIP_DEPTH_FORMAT,
+    VALIDATE_APIP_SAMPLE_COUNT,
+    VALIDATE_ABND_PIPELINE,
+    VALIDATE_ABND_PIPELINE_EXISTS,
+    VALIDATE_ABND_PIPELINE_VALID,
+    VALIDATE_ABND_VBS,
+    VALIDATE_ABND_VB_EXISTS,
+    VALIDATE_ABND_VB_TYPE,
+    VALIDATE_ABND_VB_OVERFLOW,
+    VALIDATE_ABND_NO_IB,
+    VALIDATE_ABND_IB,
+    VALIDATE_ABND_IB_EXISTS,
+    VALIDATE_ABND_IB_TYPE,
+    VALIDATE_ABND_IB_OVERFLOW,
+    VALIDATE_ABND_VS_IMGS,
+    VALIDATE_ABND_VS_IMG_EXISTS,
+    VALIDATE_ABND_VS_IMG_TYPES,
+    VALIDATE_ABND_FS_IMGS,
+    VALIDATE_ABND_FS_IMG_EXISTS,
+    VALIDATE_ABND_FS_IMG_TYPES,
+    VALIDATE_AUB_NO_PIPELINE,
+    VALIDATE_AUB_NO_UB_AT_SLOT,
+    VALIDATE_AUB_SIZE,
+    VALIDATE_UPDATEBUF_USAGE,
+    VALIDATE_UPDATEBUF_SIZE,
+    VALIDATE_UPDATEBUF_ONCE,
+    VALIDATE_UPDATEBUF_APPEND,
+    VALIDATE_APPENDBUF_USAGE,
+    VALIDATE_APPENDBUF_SIZE,
+    VALIDATE_APPENDBUF_UPDATE,
+    VALIDATE_UPDIMG_USAGE,
+    VALIDATE_UPDIMG_ONCE,
+    VALIDATION_FAILED,
+};
 pub const GlContextDesc = extern struct {
     force_gles2: bool = false,
 };
 pub const MetalContextDesc = extern struct {
     device: ?*const anyopaque = null,
-    renderpass_descriptor_cb: ?meta.FnPtr(fn() callconv(.C) ?*const anyopaque) = null,
-    renderpass_descriptor_userdata_cb: ?meta.FnPtr(fn(?*anyopaque) callconv(.C) ?*const anyopaque) = null,
-    drawable_cb: ?meta.FnPtr(fn() callconv(.C) ?*const anyopaque) = null,
-    drawable_userdata_cb: ?meta.FnPtr(fn(?*anyopaque) callconv(.C) ?*const anyopaque) = null,
+    renderpass_descriptor_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
+    renderpass_descriptor_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    drawable_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
+    drawable_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
     user_data: ?*anyopaque = null,
 };
 pub const D3d11ContextDesc = extern struct {
     device: ?*const anyopaque = null,
     device_context: ?*const anyopaque = null,
-    render_target_view_cb: ?meta.FnPtr(fn() callconv(.C) ?*const anyopaque) = null,
-    render_target_view_userdata_cb: ?meta.FnPtr(fn(?*anyopaque) callconv(.C) ?*const anyopaque) = null,
-    depth_stencil_view_cb: ?meta.FnPtr(fn() callconv(.C) ?*const anyopaque) = null,
-    depth_stencil_view_userdata_cb: ?meta.FnPtr(fn(?*anyopaque) callconv(.C) ?*const anyopaque) = null,
+    render_target_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
+    render_target_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
     user_data: ?*anyopaque = null,
 };
 pub const WgpuContextDesc = extern struct {
     device: ?*const anyopaque = null,
-    render_view_cb: ?meta.FnPtr(fn() callconv(.C) ?*const anyopaque) = null,
-    render_view_userdata_cb: ?meta.FnPtr(fn(?*anyopaque) callconv(.C) ?*const anyopaque) = null,
-    resolve_view_cb: ?meta.FnPtr(fn() callconv(.C) ?*const anyopaque) = null,
-    resolve_view_userdata_cb: ?meta.FnPtr(fn(?*anyopaque) callconv(.C) ?*const anyopaque) = null,
-    depth_stencil_view_cb: ?meta.FnPtr(fn() callconv(.C) ?*const anyopaque) = null,
-    depth_stencil_view_userdata_cb: ?meta.FnPtr(fn(?*anyopaque) callconv(.C) ?*const anyopaque) = null,
+    render_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
+    render_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    resolve_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
+    resolve_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
     user_data: ?*anyopaque = null,
 };
 pub const ContextDesc = extern struct {
@@ -660,13 +839,17 @@ pub const ContextDesc = extern struct {
     d3d11: D3d11ContextDesc = .{ },
     wgpu: WgpuContextDesc = .{ },
 };
+pub const CommitListener = extern struct {
+    func: ?*const fn(?*anyopaque) callconv(.C) void = null,
+    user_data: ?*anyopaque = null,
+};
 pub const Allocator = extern struct {
-    alloc: ?meta.FnPtr(fn(usize, ?*anyopaque) callconv(.C) ?*anyopaque) = null,
-    free: ?meta.FnPtr(fn(?*anyopaque, ?*anyopaque) callconv(.C) void) = null,
+    alloc: ?*const fn(usize, ?*anyopaque) callconv(.C) ?*anyopaque = null,
+    free: ?*const fn(?*anyopaque, ?*anyopaque) callconv(.C) void = null,
     user_data: ?*anyopaque = null,
 };
 pub const Logger = extern struct {
-    log_cb: ?meta.FnPtr(fn([*c]const u8, ?*anyopaque) callconv(.C) void) = null,
+    func: ?*const fn([*c]const u8, u32, u32, [*c]const u8, u32, [*c]const u8, ?*anyopaque) callconv(.C) void = null,
     user_data: ?*anyopaque = null,
 };
 pub const Desc = extern struct {
@@ -680,6 +863,8 @@ pub const Desc = extern struct {
     uniform_buffer_size: i32 = 0,
     staging_buffer_size: i32 = 0,
     sampler_cache_size: i32 = 0,
+    max_commit_listeners: i32 = 0,
+    disable_validation: bool = false,
     allocator: Allocator = .{ },
     logger: Logger = .{ },
     context: ContextDesc = .{ },
@@ -708,6 +893,14 @@ pub fn pushDebugGroup(name: [:0]const u8) void {
 pub extern fn sg_pop_debug_group() void;
 pub fn popDebugGroup() void {
     sg_pop_debug_group();
+}
+pub extern fn sg_add_commit_listener(CommitListener) bool;
+pub fn addCommitListener(listener: CommitListener) bool {
+    return sg_add_commit_listener(listener);
+}
+pub extern fn sg_remove_commit_listener(CommitListener) bool;
+pub fn removeCommitListener(listener: CommitListener) bool {
+    return sg_remove_commit_listener(listener);
 }
 pub extern fn sg_make_buffer([*c]const BufferDesc) Buffer;
 pub fn makeBuffer(desc: BufferDesc) Buffer {
@@ -922,84 +1115,84 @@ pub fn allocPass() Pass {
     return sg_alloc_pass();
 }
 pub extern fn sg_dealloc_buffer(Buffer) void;
-pub fn deallocBuffer(buf_id: Buffer) void {
-    sg_dealloc_buffer(buf_id);
+pub fn deallocBuffer(buf: Buffer) void {
+    sg_dealloc_buffer(buf);
 }
 pub extern fn sg_dealloc_image(Image) void;
-pub fn deallocImage(img_id: Image) void {
-    sg_dealloc_image(img_id);
+pub fn deallocImage(img: Image) void {
+    sg_dealloc_image(img);
 }
 pub extern fn sg_dealloc_shader(Shader) void;
-pub fn deallocShader(shd_id: Shader) void {
-    sg_dealloc_shader(shd_id);
+pub fn deallocShader(shd: Shader) void {
+    sg_dealloc_shader(shd);
 }
 pub extern fn sg_dealloc_pipeline(Pipeline) void;
-pub fn deallocPipeline(pip_id: Pipeline) void {
-    sg_dealloc_pipeline(pip_id);
+pub fn deallocPipeline(pip: Pipeline) void {
+    sg_dealloc_pipeline(pip);
 }
 pub extern fn sg_dealloc_pass(Pass) void;
-pub fn deallocPass(pass_id: Pass) void {
-    sg_dealloc_pass(pass_id);
+pub fn deallocPass(pass: Pass) void {
+    sg_dealloc_pass(pass);
 }
 pub extern fn sg_init_buffer(Buffer, [*c]const BufferDesc) void;
-pub fn initBuffer(buf_id: Buffer, desc: BufferDesc) void {
-    sg_init_buffer(buf_id, &desc);
+pub fn initBuffer(buf: Buffer, desc: BufferDesc) void {
+    sg_init_buffer(buf, &desc);
 }
 pub extern fn sg_init_image(Image, [*c]const ImageDesc) void;
-pub fn initImage(img_id: Image, desc: ImageDesc) void {
-    sg_init_image(img_id, &desc);
+pub fn initImage(img: Image, desc: ImageDesc) void {
+    sg_init_image(img, &desc);
 }
 pub extern fn sg_init_shader(Shader, [*c]const ShaderDesc) void;
-pub fn initShader(shd_id: Shader, desc: ShaderDesc) void {
-    sg_init_shader(shd_id, &desc);
+pub fn initShader(shd: Shader, desc: ShaderDesc) void {
+    sg_init_shader(shd, &desc);
 }
 pub extern fn sg_init_pipeline(Pipeline, [*c]const PipelineDesc) void;
-pub fn initPipeline(pip_id: Pipeline, desc: PipelineDesc) void {
-    sg_init_pipeline(pip_id, &desc);
+pub fn initPipeline(pip: Pipeline, desc: PipelineDesc) void {
+    sg_init_pipeline(pip, &desc);
 }
 pub extern fn sg_init_pass(Pass, [*c]const PassDesc) void;
-pub fn initPass(pass_id: Pass, desc: PassDesc) void {
-    sg_init_pass(pass_id, &desc);
+pub fn initPass(pass: Pass, desc: PassDesc) void {
+    sg_init_pass(pass, &desc);
 }
-pub extern fn sg_uninit_buffer(Buffer) bool;
-pub fn uninitBuffer(buf_id: Buffer) bool {
-    return sg_uninit_buffer(buf_id);
+pub extern fn sg_uninit_buffer(Buffer) void;
+pub fn uninitBuffer(buf: Buffer) void {
+    sg_uninit_buffer(buf);
 }
-pub extern fn sg_uninit_image(Image) bool;
-pub fn uninitImage(img_id: Image) bool {
-    return sg_uninit_image(img_id);
+pub extern fn sg_uninit_image(Image) void;
+pub fn uninitImage(img: Image) void {
+    sg_uninit_image(img);
 }
-pub extern fn sg_uninit_shader(Shader) bool;
-pub fn uninitShader(shd_id: Shader) bool {
-    return sg_uninit_shader(shd_id);
+pub extern fn sg_uninit_shader(Shader) void;
+pub fn uninitShader(shd: Shader) void {
+    sg_uninit_shader(shd);
 }
-pub extern fn sg_uninit_pipeline(Pipeline) bool;
-pub fn uninitPipeline(pip_id: Pipeline) bool {
-    return sg_uninit_pipeline(pip_id);
+pub extern fn sg_uninit_pipeline(Pipeline) void;
+pub fn uninitPipeline(pip: Pipeline) void {
+    sg_uninit_pipeline(pip);
 }
-pub extern fn sg_uninit_pass(Pass) bool;
-pub fn uninitPass(pass_id: Pass) bool {
-    return sg_uninit_pass(pass_id);
+pub extern fn sg_uninit_pass(Pass) void;
+pub fn uninitPass(pass: Pass) void {
+    sg_uninit_pass(pass);
 }
 pub extern fn sg_fail_buffer(Buffer) void;
-pub fn failBuffer(buf_id: Buffer) void {
-    sg_fail_buffer(buf_id);
+pub fn failBuffer(buf: Buffer) void {
+    sg_fail_buffer(buf);
 }
 pub extern fn sg_fail_image(Image) void;
-pub fn failImage(img_id: Image) void {
-    sg_fail_image(img_id);
+pub fn failImage(img: Image) void {
+    sg_fail_image(img);
 }
 pub extern fn sg_fail_shader(Shader) void;
-pub fn failShader(shd_id: Shader) void {
-    sg_fail_shader(shd_id);
+pub fn failShader(shd: Shader) void {
+    sg_fail_shader(shd);
 }
 pub extern fn sg_fail_pipeline(Pipeline) void;
-pub fn failPipeline(pip_id: Pipeline) void {
-    sg_fail_pipeline(pip_id);
+pub fn failPipeline(pip: Pipeline) void {
+    sg_fail_pipeline(pip);
 }
 pub extern fn sg_fail_pass(Pass) void;
-pub fn failPass(pass_id: Pass) void {
-    sg_fail_pass(pass_id);
+pub fn failPass(pass: Pass) void {
+    sg_fail_pass(pass);
 }
 pub extern fn sg_setup_context() Context;
 pub fn setupContext() Context {

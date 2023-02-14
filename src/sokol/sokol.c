@@ -15,3 +15,4 @@
 #include "sokol_app.h"
 #include "sokol_gfx.h"
 #include "sokol_audio.h"
+#include "sokol_log.h"

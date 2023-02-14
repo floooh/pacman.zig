@@ -10,6 +10,7 @@ const sg     = sokol.gfx;
 const sapp   = sokol.app;
 const sgapp  = sokol.app_gfx_glue;
 const saudio = sokol.audio;
+const slog   = sokol.log;
 
 // debugging and config options
 const AudioVolume = 0.5;
@@ -1848,7 +1849,8 @@ fn gfxInit() void {
         .shader_pool_size = 2,
         .pipeline_pool_size = 2,
         .pass_pool_size = 1,
-        .context = sgapp.context()
+        .context = sgapp.context(),
+        .logger = .{ .func = slog.func },
     });
     gfxDecodeTiles();
     gfxDecodeColorPalette();
@@ -2456,7 +2458,7 @@ fn gfxCreateResources() void {
 
 //--- audio system -------------------------------------------------------------
 fn soundInit() void {
-    saudio.setup(.{});
+    saudio.setup(.{ .logger = .{ .func = slog.func } });
 
     // compute sample duration in nanoseconds
     const samples_per_sec: i32 = saudio.sampleRate();
@@ -2840,7 +2842,8 @@ pub fn main() void {
         .cleanup_cb = cleanup,
         .width = 2 * DisplayPixelsX,
         .height = 2 * DisplayPixelsY,
-        .window_title = "pacman.zig"
+        .window_title = "pacman.zig",
+        .logger = .{ .func = slog.func },
     });
 }
 
@@ -2854,6 +2857,7 @@ export fn emsc_main() void {
         .width = 2 * DisplayPixelsX,
         .height = 2 * DisplayPixelsY,
         .window_title = "pacman.zig",
+        .logger = .{ .func = slog.func },
     });
 }
 
