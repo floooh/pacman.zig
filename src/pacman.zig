@@ -929,7 +929,7 @@ fn gameTick() void {
 
     // render debug markers (current ghost targets)
     if (DbgShowMarkers) {
-        for (state.game.ghosts) |*ghost, i| {
+        for (state.game.ghosts, 0..) |*ghost, i| {
             const tile: u8 = switch (ghost.state) {
                 .None => 'N',
                 .Chase => 'C',
@@ -981,7 +981,7 @@ fn gameUpdateActors() void {
             state.game.score += 5;
             start(&state.game.pill_eaten);
             state.game.num_ghosts_eaten = 0;
-            for (state.game.ghosts) |*ghost| {
+            for (&state.game.ghosts) |*ghost| {
                 start(&ghost.frightened);
             }
             gameUpdateDotsEaten();
@@ -999,7 +999,7 @@ fn gameUpdateActors() void {
             }
         }
         // check if Pacman collides with a ghost
-        for (state.game.ghosts) |*ghost| {
+        for (&state.game.ghosts) |*ghost| {
             const ghost_tile_pos = pixelToTilePos(ghost.actor.pos);
             if (ivec2.equal(ghost_tile_pos, pacman_tile_pos)) {
                 switch (ghost.state) {
@@ -1037,7 +1037,7 @@ fn gameUpdateActors() void {
     }
 
     // ghost AIs
-    for (state.game.ghosts) |*ghost| {
+    for (&state.game.ghosts) |*ghost| {
         // handle ghost state transitions
         gameUpdateGhostState(ghost);
         // update the ghosts target position
@@ -1409,7 +1409,7 @@ fn gameUpdateGhostHouseDotCounters() void {
         // otherwise each ghost has his own personal dot counter to decide
         // when to leave the ghost house, the dot counter is only increments
         // for the first ghost below the dot limit
-        for (state.game.ghosts) |*ghost| {
+        for (&state.game.ghosts) |*ghost| {
             if (ghost.dot_counter < ghost.dot_limit) {
                 ghost.dot_counter += 1;
                 break;
@@ -1703,7 +1703,7 @@ fn gameUpdateSprites() void {
 
     // update ghost sprites
     // FIXME: Zig doesn't allow a const pointer in the loop?
-    for (state.game.ghosts) |*ghost| {
+    for (&state.game.ghosts) |*ghost| {
         var spr = spriteGhost(ghost.type);
         if (spr.enabled) {
             spr.pos = actorToSpritePos(ghost.actor.pos);
@@ -1789,7 +1789,7 @@ fn introTick() void {
     var delay: u32 = 0;
     const names = [_][]const u8 { "-SHADOW", "-SPEEDY", "-BASHFUL", "-POKEY" };
     const nicknames = [_][]const u8 { "BLINKY", "PINKY", "INKY", "CLYDE" };
-    for (names) |name, i| {
+    for (names, 0..) |name, i| {
         const color: u8 = 2 * @intCast(u8,i) + 1;
         const y: i16 = 3 * @intCast(i16,i) + 6;
 
@@ -2008,7 +2008,7 @@ fn gfxFruitScore(fruit: Fruit) void {
 }
 
 fn gfxClearSprites() void {
-    for (state.gfx.sprites) |*spr| {
+    for (&state.gfx.sprites) |*spr| {
         spr.* = .{};
     }
 }
@@ -2141,7 +2141,7 @@ fn gfxAddSpriteVertices() void {
     const dy = 1.0 / @intToFloat(f32, DisplayPixelsY);
     const dtx = @intToFloat(f32, SpriteWidth) / TileTextureWidth;
     const dty = @intToFloat(f32, SpriteHeight) / TileTextureHeight;
-    for (state.gfx.sprites) |*spr| {
+    for (&state.gfx.sprites) |*spr| {
         if (spr.enabled) {
             const xx0 = @intToFloat(f32, spr.pos.x) * dx;
             const xx1 = xx0 + dx*SpriteWidth;
@@ -2169,7 +2169,7 @@ fn gfxAddSpriteVertices() void {
 }
 
 fn gfxAddDebugMarkerVertices() void {
-    for (state.gfx.debug_markers) |*dbg| {
+    for (&state.gfx.debug_markers) |*dbg| {
         if (dbg.enabled) {
             gfxAddTileVertices(@intCast(u32, dbg.tile_pos.x), @intCast(u32, dbg.tile_pos.y), dbg.tile, dbg.color);
         }
@@ -2292,7 +2292,7 @@ fn gfxDecodeColorPalette() void {
     // Intensities for the 3 bits are: 0x97 + 0x47 + 0x21
     const color_rom = @embedFile("roms/pacman_hwcolors.rom");
     var hw_colors: [32]u32 = undefined;
-    for (hw_colors) |*pt, i| {
+    for (&hw_colors, 0..) |*pt, i| {
         const rgb = color_rom[i];
         const r: u32 = ((rgb>>0)&1)*0x21 + ((rgb>>1)&1)*0x47 + ((rgb>>2)&1)*0x97;
         const g: u32 = ((rgb>>3)&1)*0x21 + ((rgb>>4)&1)*0x47 + ((rgb>>5)&1)*0x97;
@@ -2302,7 +2302,7 @@ fn gfxDecodeColorPalette() void {
 
     // build 256-entry from indirection palette ROM
     const palette_rom = @embedFile("roms/pacman_palette.rom");
-    for (data.color_palette) |*pt, i| {
+    for (&data.color_palette, 0..) |*pt, i| {
         pt.* = hw_colors[palette_rom[i] & 0xF];
         // first color in each color block is transparent
         if ((i & 3) == 0) {
@@ -2476,7 +2476,7 @@ fn soundShutdown() void {
 // update the Namco sound generator emulation, must be called at 96Khz
 const WaveTableRom = @embedFile("roms/pacman_wavetable.rom");
 fn soundVoiceTick() void {
-    for (state.audio.voices) |*voice| {
+    for (&state.audio.voices) |*voice| {
         voice.counter +%= voice.frequency;  // NOTE: add with wraparound
         // lookup current 4-bit sample from waveform index and
         // topmost 5 bits of the frequency counter
@@ -2491,7 +2491,7 @@ fn soundVoiceTick() void {
 // the per-sample tick function must be called with the playback sample rate (e.g. 44.1kHz)
 fn soundSampleTick() void {
     var sm: f32 = 0.0;
-    for (state.audio.voices) |*voice| {
+    for (&state.audio.voices) |*voice| {
         if (voice.sample_div > 0.0) {
             sm += voice.sample_acc / voice.sample_div;
             voice.sample_acc = 0.0;
@@ -2525,7 +2525,7 @@ fn soundFrame(frame_time_ns: i32) void {
 
 // the sound system's 60Hz tick function which takes care of sound-effect playback
 fn soundTick() void {
-    for (state.audio.sounds) |*sound, sound_slot| {
+    for (&state.audio.sounds, 0..) |*sound, sound_slot| {
         if (sound.func) |func| {
             // this is a procedural sound effect
             func(sound_slot);
@@ -2539,7 +2539,7 @@ fn soundTick() void {
 
             // decode register dump values into voice registers
             var dump_index = sound.cur_tick * sound.stride;
-            for (state.audio.voices) |*voice, i| {
+            for (&state.audio.voices, 0..) |*voice, i| {
                 if (sound.voice[i]) {
                     const val: u32 = dump[dump_index];
                     dump_index += 1;
@@ -2560,17 +2560,17 @@ fn soundTick() void {
 
 // clear all active sound effects and start outputting silence
 fn soundClear() void {
-    for (state.audio.voices) |*voice| {
+    for (&state.audio.voices) |*voice| {
         voice.* = .{};
     }
-    for (state.audio.sounds) |*sound| {
+    for (&state.audio.sounds) |*sound| {
         sound.* = .{};
     }
 }
 
 // stop a sound effect
 fn soundStop(sound_slot: usize) void {
-    for (state.audio.voices) |*voice, i| {
+    for (&state.audio.voices, 0..) |*voice, i| {
         if (state.audio.sounds[sound_slot].voice[i]) {
             voice.* = .{};
         }
