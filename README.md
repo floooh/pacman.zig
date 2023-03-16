@@ -10,7 +10,7 @@ Zig bindings for the sokol headers are here: https://github.com/floooh/sokol-zig
 
 ## Build and Run
 
-Requires Zig version 0.10.0
+Requires Zig version 0.10.0 (for the Zig dev version, check out the branch zig-0.11.0).
 
 Zig installation: https://github.com/ziglang/zig/wiki/Install-Zig-from-a-Package-Manager
 
