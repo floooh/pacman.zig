@@ -929,7 +929,7 @@ fn gameTick() void {
 
     // render debug markers (current ghost targets)
     if (DbgShowMarkers) {
-        for (state.game.ghosts, 0..) |*ghost, i| {
+        for (&state.game.ghosts, 0..) |*ghost, i| {
             const tile: u8 = switch (ghost.state) {
                 .None => 'N',
                 .Chase => 'C',
