@@ -2823,9 +2823,79 @@ export fn input(ev: ?*const sapp.Event) void {
                 else => {}
             }
         }
-    }
-    else if ((event.type == .TOUCHES_BEGAN) or (event.type == .TOUCHES_ENDED)) {
-        state.input.anykey = event.type == .TOUCHES_BEGAN;
+    } else if ((event.type == .TOUCHES_BEGAN) or (event.type == .TOUCHES_ENDED)) {
+        const tp = event.touches[0];
+        const key_pressed = event.type == .TOUCHES_BEGAN;
+        if (state.input.enabled) {
+            state.input.anykey = key_pressed;
+            state.input.up = false;
+            state.input.down = false;
+            state.input.left = false;
+            state.input.right = false;
+
+            if (!key_pressed) return;
+
+            const vertical_half = sapp.heightf() / 2.0;
+            const horizontal_half = sapp.widthf() / 2.0;
+
+            const vertical_third = sapp.heightf() / 3.0;
+            const horizontal_third = sapp.widthf() / 3.0;
+
+            switch (state.game.pacman.actor.dir) {
+                .Left => {
+                    // Left 2/3rds of the screen is UP/DOWN
+                    // Right 1/3 is RIGHT
+                    if (tp.pos_x > horizontal_third * 2) {
+                        state.input.right = true;
+                    } else {
+                        if (tp.pos_y < vertical_half) {
+                            state.input.up = true;
+                        } else {
+                            state.input.down = true;
+                        }
+                    }
+                },
+                .Right => {
+                    // Right 2/3rds of the screen is UP/DOWN
+                    // Left 1/3 is LEFT
+                    if (tp.pos_x < horizontal_third) {
+                        state.input.left = true;
+                    } else {
+                        if (tp.pos_y < vertical_half) {
+                            state.input.up = true;
+                        } else {
+                            state.input.down = true;
+                        }
+                    }
+                },
+                .Up => {
+                    // Top  2/3rds  of the screen is LEFT / RIGHT
+                    // Bottoom 1/3 is DOWN
+                    if (tp.pos_y > vertical_third * 2) {
+                        state.input.down = true;
+                    } else {
+                        if (tp.pos_x < horizontal_half) {
+                            state.input.left = true;
+                        } else {
+                            state.input.right = true;
+                        }
+                    }
+                },
+                .Down => {
+                    // Bottom 2/3rds of the screen is LEFT / RIGHT
+                    // Top 1/3 is UP
+                    if (tp.pos_y < vertical_third) {
+                        state.input.up = true;
+                    } else {
+                        if (tp.pos_x < horizontal_half) {
+                            state.input.left = true;
+                        } else {
+                            state.input.right = true;
+                        }
+                    }
+                },
+            }
+        }
     }
 }
 
