@@ -373,12 +373,14 @@ const State = struct {
             tile_img: sg.Image = .{},
             palette_img: sg.Image = .{},
             render_target: sg.Image = .{},
+            sampler: sg.Sampler = .{},
             pip: sg.Pipeline = .{},
             pass: sg.Pass = .{},
             bind: sg.Bindings = .{},
         } = .{},
         display: struct {
             quad_vbuf: sg.Buffer = .{},
+            sampler: sg.Sampler = .{},
             pip: sg.Pipeline = .{},
             bind: sg.Bindings = .{},
         } = .{},
@@ -2319,7 +2321,10 @@ fn gfxDecodeColorPalette() void {
 
 fn gfxCreateResources() void {
     // pass action for clearing background to black
-    state.gfx.pass_action.colors[0] = .{ .action = .CLEAR, .value = .{ .r = 0, .g = 0, .b = 0, .a = 1 } };
+    state.gfx.pass_action.colors[0] = .{
+        .load_action = .CLEAR,
+        .clear_value = .{ .r = 0, .g = 0, .b = 0, .a = 1 },
+    };
 
     // create a dynamic vertex buffer for the tile and sprite quads
     state.gfx.offscreen.vbuf = sg.makeBuffer(.{ .usage = .STREAM, .size = @sizeOf(@TypeOf(data.vertices)) });
@@ -2338,19 +2343,22 @@ fn gfxCreateResources() void {
         shd_desc.attrs[0] = .{ .name = "pos", .sem_name = "POSITION" };
         shd_desc.attrs[1] = .{ .name = "uv_in", .sem_name = "TEXCOORD", .sem_index = 0 };
         shd_desc.attrs[2] = .{ .name = "data_in", .sem_name = "TEXCOORD", .sem_index = 1 };
-        shd_desc.fs.images[0] = .{ .name = "tile_tex", .image_type = ._2D };
-        shd_desc.fs.images[1] = .{ .name = "pal_tex", .image_type = ._2D };
+        shd_desc.fs.images[0] = .{ .used = true };
+        shd_desc.fs.images[1] = .{ .used = true };
+        shd_desc.fs.samplers[0] = .{ .used = true };
+        shd_desc.fs.image_sampler_pairs[0] = .{ .used = true, .glsl_name = "tile_tex", .image_slot = 0, .sampler_slot = 0 };
+        shd_desc.fs.image_sampler_pairs[1] = .{ .used = true, .glsl_name = "pal_tex", .image_slot = 1, .sampler_slot = 0 };
         shd_desc.vs.source = switch (sg.queryBackend()) {
             .D3D11 => @embedFile("shaders/offscreen_vs.hlsl"),
             .GLCORE33 => @embedFile("shaders/offscreen_vs.v330.glsl"),
-            .GLES2 => @embedFile("shaders/offscreen_vs.v100.glsl"),
+            .GLES3 => @embedFile("shaders/offscreen_vs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_vs.metal"),
             else => unreachable,
         };
         shd_desc.fs.source = switch (sg.queryBackend()) {
             .D3D11 => @embedFile("shaders/offscreen_fs.hlsl"),
             .GLCORE33 => @embedFile("shaders/offscreen_fs.v330.glsl"),
-            .GLES2 => @embedFile("shaders/offscreen_fs.v100.glsl"),
+            .GLES3 => @embedFile("shaders/offscreen_fs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_fs.metal"),
             else => unreachable,
         };
@@ -2372,18 +2380,20 @@ fn gfxCreateResources() void {
     {
         var shd_desc: sg.ShaderDesc = .{};
         shd_desc.attrs[0] = .{ .name = "pos", .sem_name = "POSITION" };
-        shd_desc.fs.images[0] = .{ .name = "tex", .image_type = ._2D };
+        shd_desc.fs.images[0] = .{ .used = true };
+        shd_desc.fs.samplers[0] = .{ .used = true };
+        shd_desc.fs.image_sampler_pairs[0] = .{ .used = true, .glsl_name = "tex", .image_slot = 0, .sampler_slot = 0 };
         shd_desc.vs.source = switch (sg.queryBackend()) {
             .D3D11 => @embedFile("shaders/display_vs.hlsl"),
             .GLCORE33 => @embedFile("shaders/display_vs.v330.glsl"),
-            .GLES2 => @embedFile("shaders/display_vs.v100.glsl"),
+            .GLES3 => @embedFile("shaders/display_vs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_vs.metal"),
             else => unreachable,
         };
         shd_desc.fs.source = switch (sg.queryBackend()) {
             .D3D11 => @embedFile("shaders/display_fs.hlsl"),
             .GLCORE33 => @embedFile("shaders/display_fs.v330.glsl"),
-            .GLES2 => @embedFile("shaders/display_fs.v100.glsl"),
+            .GLES3 => @embedFile("shaders/display_fs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_fs.metal"),
             else => unreachable,
         };
@@ -2396,7 +2406,12 @@ fn gfxCreateResources() void {
     }
 
     // create a render-target image with a fixed upscale ratio
-    state.gfx.offscreen.render_target = sg.makeImage(.{ .render_target = true, .width = DisplayPixelsX * 2, .height = DisplayPixelsY * 2, .pixel_format = .RGBA8, .min_filter = .LINEAR, .mag_filter = .LINEAR, .wrap_u = .CLAMP_TO_EDGE, .wrap_v = .CLAMP_TO_EDGE });
+    state.gfx.offscreen.render_target = sg.makeImage(.{
+        .render_target = true,
+        .width = DisplayPixelsX * 2,
+        .height = DisplayPixelsY * 2,
+        .pixel_format = .RGBA8,
+    });
 
     // a pass object for rendering into the offscreen render target
     {
@@ -2411,10 +2426,6 @@ fn gfxCreateResources() void {
             .width = TileTextureWidth,
             .height = TileTextureHeight,
             .pixel_format = .R8,
-            .min_filter = .NEAREST,
-            .mag_filter = .NEAREST,
-            .wrap_u = .CLAMP_TO_EDGE,
-            .wrap_v = .CLAMP_TO_EDGE,
         };
         img_desc.data.subimage[0][0] = sg.asRange(&data.tile_pixels);
         state.gfx.offscreen.tile_img = sg.makeImage(img_desc);
@@ -2426,21 +2437,35 @@ fn gfxCreateResources() void {
             .width = 256,
             .height = 1,
             .pixel_format = .RGBA8,
-            .min_filter = .NEAREST,
-            .mag_filter = .NEAREST,
-            .wrap_u = .CLAMP_TO_EDGE,
-            .wrap_v = .CLAMP_TO_EDGE,
         };
         img_desc.data.subimage[0][0] = sg.asRange(&data.color_palette);
         state.gfx.offscreen.palette_img = sg.makeImage(img_desc);
     }
 
+    // a nearest-filter sampler object for the offscreen render pass
+    state.gfx.offscreen.sampler = sg.makeSampler(.{
+        .min_filter = .NEAREST,
+        .mag_filter = .NEAREST,
+        .wrap_u = .CLAMP_TO_EDGE,
+        .wrap_v = .CLAMP_TO_EDGE,
+    });
+
+    // a linear-filtering sampler for the default render pass
+    state.gfx.display.sampler = sg.makeSampler(.{
+        .min_filter = .LINEAR,
+        .mag_filter = .LINEAR,
+        .wrap_u = .CLAMP_TO_EDGE,
+        .wrap_v = .CLAMP_TO_EDGE,
+    });
+
     // setup resource binding structs
     state.gfx.offscreen.bind.vertex_buffers[0] = state.gfx.offscreen.vbuf;
-    state.gfx.offscreen.bind.fs_images[0] = state.gfx.offscreen.tile_img;
-    state.gfx.offscreen.bind.fs_images[1] = state.gfx.offscreen.palette_img;
+    state.gfx.offscreen.bind.fs.images[0] = state.gfx.offscreen.tile_img;
+    state.gfx.offscreen.bind.fs.images[1] = state.gfx.offscreen.palette_img;
+    state.gfx.offscreen.bind.fs.samplers[0] = state.gfx.offscreen.sampler;
     state.gfx.display.bind.vertex_buffers[0] = state.gfx.display.quad_vbuf;
-    state.gfx.display.bind.fs_images[0] = state.gfx.offscreen.render_target;
+    state.gfx.display.bind.fs.images[0] = state.gfx.offscreen.render_target;
+    state.gfx.display.bind.fs.samplers[0] = state.gfx.display.sampler;
 }
 
 //--- audio system -------------------------------------------------------------
