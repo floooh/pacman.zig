@@ -84,7 +84,12 @@ fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
     // the game code must be build as library with wasm32-freestanding
     var wasm32_freestanding_target = target;
     wasm32_freestanding_target.os_tag = .freestanding;
-    const libgame = b.addStaticLibrary(.{ .name = "game", .target = target, .optimize = optimize, .root_source_file = .{ .path = "src/pacman.zig" } });
+    const libgame = b.addStaticLibrary(.{
+        .name = "game",
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = .{ .path = "src/pacman.zig" },
+    });
     libgame.addAnonymousModule("sokol", .{ .source_file = .{ .path = "src/sokol/sokol.zig" } });
     const install_libgame = b.addInstallArtifact(libgame);
 
