@@ -4,56 +4,56 @@
 //  https://github.com/floooh/pacman.c/blob/main/pacman.c
 //
 const assert = @import("std").debug.assert;
-const math   = @import("std").math;
-const sokol  = @import("sokol");
-const sg     = sokol.gfx;
-const sapp   = sokol.app;
-const sgapp  = sokol.app_gfx_glue;
+const math = @import("std").math;
+const sokol = @import("sokol");
+const sg = sokol.gfx;
+const sapp = sokol.app;
+const sgapp = sokol.app_gfx_glue;
 const saudio = sokol.audio;
-const slog   = sokol.log;
+const slog = sokol.log;
 
 // debugging and config options
 const AudioVolume = 0.5;
-const DbgSkipIntro = false;         // set to true to skip intro gamestate
-const DbgSkipPrelude = false;       // set to true to skip prelude at start of gameloop
-const DbgStartRound = 0;            // set to any starting round <= 255
-const DbgShowMarkers = false;       // set to true to display debug markers
-const DbgEscape = false;            // set to true to end game round with Escape
-const DbgDoubleSpeed = false;       // set to true to speed up game
-const DbgGodMode = false;           // set to true to make Pacman invulnerable
+const DbgSkipIntro = false; // set to true to skip intro gamestate
+const DbgSkipPrelude = false; // set to true to skip prelude at start of gameloop
+const DbgStartRound = 0; // set to any starting round <= 255
+const DbgShowMarkers = false; // set to true to display debug markers
+const DbgEscape = false; // set to true to end game round with Escape
+const DbgDoubleSpeed = false; // set to true to speed up game
+const DbgGodMode = false; // set to true to make Pacman invulnerable
 
 // misc constants
 const TickDurationNS = if (DbgDoubleSpeed) 8_333_333 else 16_666_667;
-const MaxFrameTimeNS = 33_333_333.0;    // max duration of a frame in nanoseconds
-const TickToleranceNS = 1_000_000;      // max time tolerance of a game tick in nanoseconds
-const FadeTicks = 30;                   // fade in/out duration in game ticks
+const MaxFrameTimeNS = 33_333_333.0; // max duration of a frame in nanoseconds
+const TickToleranceNS = 1_000_000; // max time tolerance of a game tick in nanoseconds
+const FadeTicks = 30; // fade in/out duration in game ticks
 const NumDebugMarkers = 16;
 const NumLives = 3;
 const NumGhosts = 4;
 const NumDots = 244;
 const NumPills = 4;
-const AntePortasX = 14*TileWidth;   // x/y position of ghost hour entry
-const AntePortasY = 14*TileHeight + TileHeight/2;
-const FruitActiveTicks = 10 * 60;   // number of ticks the bonus fruit is shown
-const GhostEatenFreezeTicks = 60;   // number of ticks the game freezes after Pacman eats a ghost
-const PacmanEatenTicks = 60;        // number of ticks the game freezes after Pacman gets eaten
-const PacmanDeathTicks = 150;       // number of ticks to show the Pacman death sequence before starting a new round
-const GameOverTicks = 3*60;         // number of ticks to show the Game Over message
-const RoundWonTicks = 4*60;         // number of ticks to wait after a round was won
+const AntePortasX = 14 * TileWidth; // x/y position of ghost hour entry
+const AntePortasY = 14 * TileHeight + TileHeight / 2;
+const FruitActiveTicks = 10 * 60; // number of ticks the bonus fruit is shown
+const GhostEatenFreezeTicks = 60; // number of ticks the game freezes after Pacman eats a ghost
+const PacmanEatenTicks = 60; // number of ticks the game freezes after Pacman gets eaten
+const PacmanDeathTicks = 150; // number of ticks to show the Pacman death sequence before starting a new round
+const GameOverTicks = 3 * 60; // number of ticks to show the Game Over message
+const RoundWonTicks = 4 * 60; // number of ticks to wait after a round was won
 
 // rendering system constants
-const TileWidth = 8;            // width/height of a background tile in pixels
+const TileWidth = 8; // width/height of a background tile in pixels
 const TileHeight = 8;
-const SpriteWidth = 16;         // width/height of a sprite in pixels
+const SpriteWidth = 16; // width/height of a sprite in pixels
 const SpriteHeight = 16;
-const DisplayTilesX = 28;       // display width/height in number of tiles
+const DisplayTilesX = 28; // display width/height in number of tiles
 const DisplayTilesY = 36;
 const DisplayPixelsX = DisplayTilesX * TileWidth;
 const DisplayPixelsY = DisplayTilesY * TileHeight;
 const TileTextureWidth = 256 * TileWidth;
 const TileTextureHeight = TileHeight + SpriteHeight;
 const NumSprites = 8;
-const MaxVertices = ((DisplayTilesX*DisplayTilesY) + NumSprites + NumDebugMarkers) * 6;
+const MaxVertices = ((DisplayTilesX * DisplayTilesY) + NumSprites + NumDebugMarkers) * 6;
 
 // sound system constants
 const NumVoices = 3;
@@ -61,67 +61,67 @@ const NumSounds = 3;
 const NumSamples = 128;
 
 // common tile codes
-const TileCodeSpace      = 0x40;
-const TileCodeDot        = 0x10;
-const TileCodePill       = 0x14;
-const TileCodeGhost      = 0xB0;
-const TileCodeLife       = 0x20; // 0x20..0x23
-const TileCodeCherries   = 0x90; // 0x90..0x93
+const TileCodeSpace = 0x40;
+const TileCodeDot = 0x10;
+const TileCodePill = 0x14;
+const TileCodeGhost = 0xB0;
+const TileCodeLife = 0x20; // 0x20..0x23
+const TileCodeCherries = 0x90; // 0x90..0x93
 const TileCodeStrawberry = 0x94; // 0x94..0x97
-const TileCodePeach      = 0x98; // 0x98..0x9B
-const TileCodeBell       = 0x9C; // 0x9C..0x9F
-const TileCodeApple      = 0xA0; // 0xA0..0xA3
-const TileCodeGrapes     = 0xA4; // 0xA4..0xA7
-const TileCodeGalaxian   = 0xA8; // 0xA8..0xAB
-const TileCodeKey        = 0xAC; // 0xAC..0xAF
-const TileCodeDoor       = 0xCF; // the ghost-house door
+const TileCodePeach = 0x98; // 0x98..0x9B
+const TileCodeBell = 0x9C; // 0x9C..0x9F
+const TileCodeApple = 0xA0; // 0xA0..0xA3
+const TileCodeGrapes = 0xA4; // 0xA4..0xA7
+const TileCodeGalaxian = 0xA8; // 0xA8..0xAB
+const TileCodeKey = 0xAC; // 0xAC..0xAF
+const TileCodeDoor = 0xCF; // the ghost-house door
 
 // common sprite tile codes
-const SpriteCodeInvisible    = 30;
-const SpriteCodeScore200     = 40;
-const SpriteCodeScore400     = 41;
-const SpriteCodeScore800     = 42;
-const SpriteCodeScore1600    = 43;
-const SpriteCodeCherries     = 0;
-const SpriteCodeStrawberry   = 1;
-const SpriteCodePeach        = 2;
-const SpriteCodeBell         = 3;
-const SpriteCodeApple        = 4;
-const SpriteCodeGrapes       = 5;
-const SpriteCodeGalaxian     = 6;
-const SpriteCodeKey          = 7;
+const SpriteCodeInvisible = 30;
+const SpriteCodeScore200 = 40;
+const SpriteCodeScore400 = 41;
+const SpriteCodeScore800 = 42;
+const SpriteCodeScore1600 = 43;
+const SpriteCodeCherries = 0;
+const SpriteCodeStrawberry = 1;
+const SpriteCodePeach = 2;
+const SpriteCodeBell = 3;
+const SpriteCodeApple = 4;
+const SpriteCodeGrapes = 5;
+const SpriteCodeGalaxian = 6;
+const SpriteCodeKey = 7;
 const SpriteCodePacmanClosedMouth = 48;
 
 // common color codes
-const ColorCodeBlank         = 0x00;
-const ColorCodeDefault       = 0x0F;
-const ColorCodeDot           = 0x10;
-const ColorCodePacman        = 0x09;
-const ColorCodeBlinky        = 0x01;
-const ColorCodePinky         = 0x03;
-const ColorCodeInky          = 0x05;
-const ColorCodeClyde         = 0x07;
-const ColorCodeFrightened    = 0x11;
+const ColorCodeBlank = 0x00;
+const ColorCodeDefault = 0x0F;
+const ColorCodeDot = 0x10;
+const ColorCodePacman = 0x09;
+const ColorCodeBlinky = 0x01;
+const ColorCodePinky = 0x03;
+const ColorCodeInky = 0x05;
+const ColorCodeClyde = 0x07;
+const ColorCodeFrightened = 0x11;
 const ColorCodeFrightenedBlinking = 0x12;
-const ColorCodeGhostScore    = 0x18;
-const ColorCodeEyes          = 0x19;
-const ColorCodeCherries      = 0x14;
-const ColorCodeStrawberry    = 0x0F;
-const ColorCodePeach         = 0x15;
-const ColorCodeBell          = 0x16;
-const ColorCodeApple         = 0x14;
-const ColorCodeGrapes        = 0x17;
-const ColorCodeGalaxian      = 0x09;
-const ColorCodeKey           = 0x16;
-const ColorCodeWhiteBorder   = 0x1F;
-const ColorCodeFruitScore    = 0x03;
+const ColorCodeGhostScore = 0x18;
+const ColorCodeEyes = 0x19;
+const ColorCodeCherries = 0x14;
+const ColorCodeStrawberry = 0x0F;
+const ColorCodePeach = 0x15;
+const ColorCodeBell = 0x16;
+const ColorCodeApple = 0x14;
+const ColorCodeGrapes = 0x17;
+const ColorCodeGalaxian = 0x09;
+const ColorCodeKey = 0x16;
+const ColorCodeWhiteBorder = 0x1F;
+const ColorCodeFruitScore = 0x03;
 
 // flags for Game.freeze
-const FreezePrelude:    u8 = (1<<0);
-const FreezeReady:      u8 = (1<<1);
-const FreezeEatGhost:   u8 = (1<<2);
-const FreezeDead:       u8 = (1<<3);
-const FreezeWon:        u8 = (1<<4);
+const FreezePrelude: u8 = (1 << 0);
+const FreezeReady: u8 = (1 << 1);
+const FreezeEatGhost: u8 = (1 << 2);
+const FreezeDead: u8 = (1 << 3);
+const FreezeWon: u8 = (1 << 4);
 
 // a 2D vector for pixel- and tile-coordinates
 const ivec2 = struct {
@@ -143,15 +143,12 @@ const ivec2 = struct {
     fn nearEqual(v0: ivec2, v1: ivec2, tolerance: i16) bool {
         const d = ivec2.sub(v1, v0);
         // use our own sloppy abs(), math.absInt() can return a runtime error
-        const a: ivec2 = .{
-            .x = if (d.x < 0) -d.x else d.x,
-            .y = if (d.y < 0) -d.y else d.y
-        };
+        const a: ivec2 = .{ .x = if (d.x < 0) -d.x else d.x, .y = if (d.y < 0) -d.y else d.y };
         return (a.x <= tolerance) and (a.y <= tolerance);
     }
     fn squaredDistance(v0: ivec2, v1: ivec2) i16 {
         const d = ivec2.sub(v1, v0);
-        return d.x*d.x + d.y*d.y;
+        return d.x * d.x + d.y * d.y;
     }
 };
 
@@ -193,33 +190,33 @@ const GhostType = enum(u8) {
 // the AI state a ghost is currently in
 const GhostState = enum {
     None,
-    Chase,      // currently chasing Pacman
-    Scatter,    // currently heading towards the corner scatter targets
+    Chase, // currently chasing Pacman
+    Scatter, // currently heading towards the corner scatter targets
     Frightened, // frightened after Pacman has eaten an energizer pill
-    Eyes,       // eaten by Pacman and heading back to the ghost house
-    House,      // currently inside the ghost house
+    Eyes, // eaten by Pacman and heading back to the ghost house
+    House, // currently inside the ghost house
     LeaveHouse, // currently leaving the ghost house
     EnterHouse, // currently entering the ghost house
 };
 
 // common ghost and Pacman state
 const Actor = struct {
-    dir:        Dir = .Right,
-    pos:        ivec2 = .{},
-    anim_tick:  u32 = 0,
+    dir: Dir = .Right,
+    pos: ivec2 = .{},
+    anim_tick: u32 = 0,
 };
 
 // Ghost state
 const Ghost = struct {
-    actor:          Actor = .{},
-    type:           GhostType = .Blinky,
-    next_dir:       Dir = .Right,
-    target_pos:     ivec2 = .{},
-    state:          GhostState = .None,
-    frightened:     Trigger = .{},
-    eaten:          Trigger = .{},
-    dot_counter:    u16 = 0,
-    dot_limit:      u16 = 0,
+    actor: Actor = .{},
+    type: GhostType = .Blinky,
+    next_dir: Dir = .Right,
+    target_pos: ivec2 = .{},
+    state: GhostState = .None,
+    frightened: Trigger = .{},
+    eaten: Trigger = .{},
+    dot_counter: u16 = 0,
+    dot_limit: u16 = 0,
 };
 
 // Pacman state
@@ -235,56 +232,58 @@ const Trigger = struct {
 
 // a 'hardware sprite' struct
 const Sprite = struct {
-    enabled:    bool = false,
-    tile:       u8 = 0,
-    color:      u8 = 0,
-    flipx:      bool = false,
-    flipy:      bool = false,
-    pos:        ivec2 = .{},
+    enabled: bool = false,
+    tile: u8 = 0,
+    color: u8 = 0,
+    flipx: bool = false,
+    flipy: bool = false,
+    pos: ivec2 = .{},
 };
 
 // a 'debug marker' for visualizing ghost targets
 const DebugMarker = struct {
-    enabled:    bool = false,
-    tile:       u8 = 0,
-    color:      u8 = 0,
-    tile_pos:   ivec2 = .{},
+    enabled: bool = false,
+    tile: u8 = 0,
+    color: u8 = 0,
+    tile_pos: ivec2 = .{},
 };
 
 // vertex-structure for rendering background tiles and sprites
 const Vertex = extern struct {
-    x: f32, y: f32,     // 2D-pos
-    u: f32, v: f32,     // texcoords
-    attr: u32,          // color code and opacity
+    x: f32,
+    y: f32, // 2D-pos
+    u: f32,
+    v: f32, // texcoords
+    attr: u32, // color code and opacity
 };
 
 // callback function signature for procedural sounds
-const SoundFunc = *const fn(usize) void;
+const SoundFunc = *const fn (usize) void;
 
 // a sound effect description
 const SoundDesc = struct {
     func: ?SoundFunc = null, // optional pointer to sound effect callback if this is a procedural sound
-    dump: ?[]const u32 = null,  // optional register dump data slice
+    dump: ?[]const u32 = null, // optional register dump data slice
     voice: [NumVoices]bool = .{false} ** NumVoices,
 };
 
 // a sound 'hardware voice' (of a Namco WSG emulation)
 const Voice = struct {
-    counter:    u20 = 0,    // a 20-bit wrap around frequency counter
-    frequency:  u20 = 0,    // a 20-bit frequency
-    waveform:   u3 = 0,     // a 3-bit waveform index into wavetable ROM dump
-    volume:     u4 = 0,     // a 4-bit volume
+    counter: u20 = 0, // a 20-bit wrap around frequency counter
+    frequency: u20 = 0, // a 20-bit frequency
+    waveform: u3 = 0, // a 3-bit waveform index into wavetable ROM dump
+    volume: u4 = 0, // a 4-bit volume
     sample_acc: f32 = 0.0,
     sample_div: f32 = 0.0,
 };
 
 // a sound effect struct
 const Sound = struct {
-    cur_tick: u32 = 0,          // current 60Hz tick counter
-    func: ?SoundFunc = null,    // optional callback for procedural sounds
-    dump: ?[]const u32 = null,  // optional register dump data
-    num_ticks: u32 = 0,         // sound effect length in ticks (only for register dump sounds)
-    stride: u32 = 0,            // register data stride for multivoice dumps (1,2 or 3)
+    cur_tick: u32 = 0, // current 60Hz tick counter
+    func: ?SoundFunc = null, // optional callback for procedural sounds
+    dump: ?[]const u32 = null, // optional register dump data
+    num_ticks: u32 = 0, // sound effect length in ticks (only for register dump sounds)
+    stride: u32 = 0, // register data stride for multivoice dumps (1,2 or 3)
     voice: [NumVoices]bool = .{false} ** NumVoices,
 };
 
@@ -293,19 +292,19 @@ const State = struct {
     game_mode: GameMode = .Intro,
 
     timing: struct {
-        tick:          u32 = 0,
+        tick: u32 = 0,
         laptime_store: u64 = 0,
-        tick_accum:    i32 = 0,
+        tick_accum: i32 = 0,
     } = .{},
 
-    input:  struct {
+    input: struct {
         enabled: bool = false,
-        up:      bool = false,
-        down:    bool = false,
-        left:    bool = false,
-        right:   bool = false,
-        esc:     bool = false,
-        anykey:  bool = false,
+        up: bool = false,
+        down: bool = false,
+        left: bool = false,
+        right: bool = false,
+        esc: bool = false,
+        anykey: bool = false,
     } = .{},
 
     intro: struct {
@@ -316,31 +315,31 @@ const State = struct {
         pacman: Pacman = .{},
         ghosts: [NumGhosts]Ghost = .{.{}} ** NumGhosts,
 
-        xorshift:           u32 = 0x12345678,   // xorshift random-number-generator state
-        score:              u32 = 0,
-        hiscore:            u32 = 0,
-        num_lives:          u8 = 0,
-        round:              u8 = 0,
-        freeze:             u8 = 0,             // combination of Freeze* flags
-        num_dots_eaten:     u8 = 0,
-        num_ghosts_eaten:   u8 = 0,
-        active_fruit:       Fruit = .None,
+        xorshift: u32 = 0x12345678, // xorshift random-number-generator state
+        score: u32 = 0,
+        hiscore: u32 = 0,
+        num_lives: u8 = 0,
+        round: u8 = 0,
+        freeze: u8 = 0, // combination of Freeze* flags
+        num_dots_eaten: u8 = 0,
+        num_ghosts_eaten: u8 = 0,
+        active_fruit: Fruit = .None,
 
         global_dot_counter_active: bool = false,
         global_dot_counter: u16 = 0,
 
-        started:            Trigger = .{},
-        ready_started:      Trigger = .{},
-        round_started:      Trigger = .{},
-        round_won:          Trigger = .{},
-        game_over:          Trigger = .{},
-        dot_eaten:          Trigger = .{},
-        pill_eaten:         Trigger = .{},
-        ghost_eaten:        Trigger = .{},
-        pacman_eaten:       Trigger = .{},
-        fruit_eaten:        Trigger = .{},
-        force_leave_house:  Trigger = .{},
-        fruit_active:       Trigger = .{},
+        started: Trigger = .{},
+        ready_started: Trigger = .{},
+        round_started: Trigger = .{},
+        round_won: Trigger = .{},
+        game_over: Trigger = .{},
+        dot_eaten: Trigger = .{},
+        pill_eaten: Trigger = .{},
+        ghost_eaten: Trigger = .{},
+        pacman_eaten: Trigger = .{},
+        fruit_eaten: Trigger = .{},
+        force_leave_house: Trigger = .{},
+        fruit_active: Trigger = .{},
     } = .{},
 
     audio: struct {
@@ -356,7 +355,7 @@ const State = struct {
 
     gfx: struct {
         // fade in/out
-        fadein:  Trigger = .{},
+        fadein: Trigger = .{},
         fadeout: Trigger = .{},
         fade: u8 = 0xFF,
 
@@ -370,18 +369,18 @@ const State = struct {
         // sokol-gfx objects
         pass_action: sg.PassAction = .{},
         offscreen: struct {
-            vbuf:           sg.Buffer = .{},
-            tile_img:       sg.Image = .{},
-            palette_img:    sg.Image = .{},
-            render_target:  sg.Image = .{},
-            pip:            sg.Pipeline = .{},
-            pass:           sg.Pass = .{},
-            bind:           sg.Bindings = .{},
+            vbuf: sg.Buffer = .{},
+            tile_img: sg.Image = .{},
+            palette_img: sg.Image = .{},
+            render_target: sg.Image = .{},
+            pip: sg.Pipeline = .{},
+            pass: sg.Pass = .{},
+            bind: sg.Bindings = .{},
         } = .{},
         display: struct {
-            quad_vbuf:  sg.Buffer = .{},
-            pip:        sg.Pipeline = .{},
-            bind:       sg.Bindings = .{},
+            quad_vbuf: sg.Buffer = .{},
+            pip: sg.Pipeline = .{},
+            bind: sg.Bindings = .{},
         } = .{},
     } = .{},
 };
@@ -390,12 +389,12 @@ var state: State = .{};
 // keep the big undefined data out of the state struct, mixing initialized
 // and uninitialized data bloats the executable size
 const UndefinedData = struct {
-    tile_ram:       [DisplayTilesY][DisplayTilesX]u8 = undefined,
-    color_ram:      [DisplayTilesY][DisplayTilesX]u8 = undefined,
-    vertices:       [MaxVertices]Vertex = undefined,
-    tile_pixels:    [TileTextureHeight][TileTextureWidth]u8 = undefined,
-    color_palette:  [256]u32 = undefined,
-    sample_buffer:  [NumSamples]f32 = undefined,
+    tile_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
+    color_ram: [DisplayTilesY][DisplayTilesX]u8 = undefined,
+    vertices: [MaxVertices]Vertex = undefined,
+    tile_pixels: [TileTextureHeight][TileTextureWidth]u8 = undefined,
+    color_palette: [256]u32 = undefined,
+    sample_buffer: [NumSamples]f32 = undefined,
 };
 var data: UndefinedData = .{};
 
@@ -406,28 +405,28 @@ const LevelSpec = struct {
     fright_ticks: u32,
 };
 const MaxLevelSpec = 21;
-const LevelSpecTable = [MaxLevelSpec]LevelSpec {
-    .{ .bonus_fruit=.Cherries,   .bonus_score=10,  .fright_ticks=6*60 },
-    .{ .bonus_fruit=.Strawberry, .bonus_score=30,  .fright_ticks=5*60, },
-    .{ .bonus_fruit=.Peach,      .bonus_score=50,  .fright_ticks=4*60, },
-    .{ .bonus_fruit=.Peach,      .bonus_score=50,  .fright_ticks=3*60, },
-    .{ .bonus_fruit=.Apple,      .bonus_score=70,  .fright_ticks=2*60, },
-    .{ .bonus_fruit=.Apple,      .bonus_score=70,  .fright_ticks=5*60, },
-    .{ .bonus_fruit=.Grapes,     .bonus_score=100, .fright_ticks=2*60, },
-    .{ .bonus_fruit=.Grapes,     .bonus_score=100, .fright_ticks=2*60, },
-    .{ .bonus_fruit=.Galaxian,   .bonus_score=200, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Galaxian,   .bonus_score=200, .fright_ticks=5*60, },
-    .{ .bonus_fruit=.Bell,       .bonus_score=300, .fright_ticks=2*60, },
-    .{ .bonus_fruit=.Bell,       .bonus_score=300, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=3*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1*60, },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
-    .{ .bonus_fruit=.Key,        .bonus_score=500, .fright_ticks=1,    },
+const LevelSpecTable = [MaxLevelSpec]LevelSpec{
+    .{ .bonus_fruit = .Cherries, .bonus_score = 10, .fright_ticks = 6 * 60 },
+    .{ .bonus_fruit = .Strawberry, .bonus_score = 30, .fright_ticks = 5 * 60 },
+    .{ .bonus_fruit = .Peach, .bonus_score = 50, .fright_ticks = 4 * 60 },
+    .{ .bonus_fruit = .Peach, .bonus_score = 50, .fright_ticks = 3 * 60 },
+    .{ .bonus_fruit = .Apple, .bonus_score = 70, .fright_ticks = 2 * 60 },
+    .{ .bonus_fruit = .Apple, .bonus_score = 70, .fright_ticks = 5 * 60 },
+    .{ .bonus_fruit = .Grapes, .bonus_score = 100, .fright_ticks = 2 * 60 },
+    .{ .bonus_fruit = .Grapes, .bonus_score = 100, .fright_ticks = 2 * 60 },
+    .{ .bonus_fruit = .Galaxian, .bonus_score = 200, .fright_ticks = 1 * 60 },
+    .{ .bonus_fruit = .Galaxian, .bonus_score = 200, .fright_ticks = 5 * 60 },
+    .{ .bonus_fruit = .Bell, .bonus_score = 300, .fright_ticks = 2 * 60 },
+    .{ .bonus_fruit = .Bell, .bonus_score = 300, .fright_ticks = 1 * 60 },
+    .{ .bonus_fruit = .Key, .bonus_score = 500, .fright_ticks = 1 * 60 },
+    .{ .bonus_fruit = .Key, .bonus_score = 500, .fright_ticks = 3 * 60 },
+    .{ .bonus_fruit = .Key, .bonus_score = 500, .fright_ticks = 1 * 60 },
+    .{ .bonus_fruit = .Key, .bonus_score = 500, .fright_ticks = 1 * 60 },
+    .{ .bonus_fruit = .Key, .bonus_score = 500, .fright_ticks = 1 },
+    .{ .bonus_fruit = .Key, .bonus_score = 500, .fright_ticks = 1 * 60 },
+    .{ .bonus_fruit = .Key, .bonus_score = 500, .fright_ticks = 1 },
+    .{ .bonus_fruit = .Key, .bonus_score = 500, .fright_ticks = 1 },
+    .{ .bonus_fruit = .Key, .bonus_score = 500, .fright_ticks = 1 },
 };
 
 //--- grab bag of helper functions ---------------------------------------------
@@ -435,16 +434,16 @@ const LevelSpecTable = [MaxLevelSpec]LevelSpec {
 // a xorshift random number generator
 fn xorshift32() u32 {
     var x = state.game.xorshift;
-    x ^= x<<13;
-    x ^= x>>17;
-    x ^= x<<5;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
     state.game.xorshift = x;
     return x;
 }
 
 // return the pixel difference from a pixel position to the next tile midpoint
 fn distToTileMid(pixel_pos: ivec2) ivec2 {
-    return .{ .x = TileWidth/2 - @mod(pixel_pos.x, TileWidth), .y = TileHeight/2 - @mod(pixel_pos.y, TileHeight) };
+    return .{ .x = TileWidth / 2 - @mod(pixel_pos.x, TileWidth), .y = TileHeight / 2 - @mod(pixel_pos.y, TileHeight) };
 }
 
 // convert a pixel position into a tile position
@@ -459,10 +458,7 @@ fn validTilePos(tile_pos: ivec2) bool {
 
 // return tile pos clamped to playfield borders
 fn clampedTilePos(tile_pos: ivec2) ivec2 {
-    return .{
-        .x = math.clamp(tile_pos.x, 0, DisplayTilesX-1),
-        .y = math.clamp(tile_pos.y, 3, DisplayTilesY-3)
-    };
+    return .{ .x = math.clamp(tile_pos.x, 0, DisplayTilesX - 1), .y = math.clamp(tile_pos.y, 3, DisplayTilesY - 3) };
 }
 
 // set time trigger to next tick
@@ -489,8 +485,7 @@ fn now(t: Trigger) bool {
 fn since(t: Trigger) u32 {
     if (state.timing.tick >= t.tick) {
         return state.timing.tick - t.tick;
-    }
-    else {
+    } else {
         return Trigger.DisabledTicks;
     }
 }
@@ -501,8 +496,7 @@ fn between(t: Trigger, begin: u32, end: u32) bool {
     if (t.tick != Trigger.DisabledTicks) {
         const ticks = since(t);
         return (ticks >= begin) and (ticks < end);
-    }
-    else {
+    } else {
         return false;
     }
 }
@@ -517,8 +511,7 @@ fn after(t: Trigger, ticks: u32) bool {
     const s = since(t);
     if (s != Trigger.DisabledTicks) {
         return s >= ticks;
-    }
-    else {
+    } else {
         return false;
     }
 }
@@ -528,8 +521,7 @@ fn before(t: Trigger, ticks: u32) bool {
     const s = since(t);
     if (s != Trigger.DisabledTicks) {
         return s < ticks;
-    }
-    else {
+    } else {
         return false;
     }
 }
@@ -546,10 +538,15 @@ fn inputDisable() void {
 // get current input state as movement direction
 fn inputDir(default_dir: Dir) Dir {
     if (state.input.enabled) {
-        if (state.input.up)         { return .Up; }
-        else if (state.input.down)  { return .Down; }
-        else if (state.input.left)  { return .Left; }
-        else if (state.input.right) { return .Right; }
+        if (state.input.up) {
+            return .Up;
+        } else if (state.input.down) {
+            return .Down;
+        } else if (state.input.left) {
+            return .Left;
+        } else if (state.input.right) {
+            return .Right;
+        }
     }
     return default_dir;
 }
@@ -558,75 +555,75 @@ fn inputDir(default_dir: Dir) Dir {
 fn reverseDir(dir: Dir) Dir {
     return switch (dir) {
         .Right => .Left,
-        .Down  => .Up,
-        .Left  => .Right,
-        .Up    => .Down,
+        .Down => .Up,
+        .Left => .Right,
+        .Up => .Down,
     };
 }
 
 // return a vector for a given direction
 fn dirToVec(dir: Dir) ivec2 {
     return switch (dir) {
-        .Right => .{ .x= 1, .y= 0 },
-        .Down  => .{ .x= 0, .y= 1 },
-        .Left  => .{ .x=-1, .y= 0 },
-        .Up    => .{ .x= 0, .y=-1 }
+        .Right => .{ .x = 1, .y = 0 },
+        .Down => .{ .x = 0, .y = 1 },
+        .Left => .{ .x = -1, .y = 0 },
+        .Up => .{ .x = 0, .y = -1 },
     };
 }
 
 // return the tile code for a fruit
 fn fruitTileCode(fruit: Fruit) u8 {
     return switch (fruit) {
-        .None       => TileCodeSpace,
-        .Cherries   => TileCodeCherries,
+        .None => TileCodeSpace,
+        .Cherries => TileCodeCherries,
         .Strawberry => TileCodeStrawberry,
-        .Peach      => TileCodePeach,
-        .Apple      => TileCodeApple,
-        .Grapes     => TileCodeGrapes,
-        .Galaxian   => TileCodeGalaxian,
-        .Bell       => TileCodeBell,
-        .Key        => TileCodeKey,
+        .Peach => TileCodePeach,
+        .Apple => TileCodeApple,
+        .Grapes => TileCodeGrapes,
+        .Galaxian => TileCodeGalaxian,
+        .Bell => TileCodeBell,
+        .Key => TileCodeKey,
     };
 }
 
 // return the color code for a fruit
 fn fruitColorCode(fruit: Fruit) u8 {
     return switch (fruit) {
-        .None       => ColorCodeBlank,
-        .Cherries   => ColorCodeCherries,
+        .None => ColorCodeBlank,
+        .Cherries => ColorCodeCherries,
         .Strawberry => ColorCodeStrawberry,
-        .Peach      => ColorCodePeach,
-        .Apple      => ColorCodeApple,
-        .Grapes     => ColorCodeGrapes,
-        .Galaxian   => ColorCodeGalaxian,
-        .Bell       => ColorCodeBell,
-        .Key        => ColorCodeKey,
+        .Peach => ColorCodePeach,
+        .Apple => ColorCodeApple,
+        .Grapes => ColorCodeGrapes,
+        .Galaxian => ColorCodeGalaxian,
+        .Bell => ColorCodeBell,
+        .Key => ColorCodeKey,
     };
 }
 
 // return the sprite tile code for a fruit
 fn fruitSpriteCode(fruit: Fruit) u8 {
     return switch (fruit) {
-        .None       => SpriteCodeInvisible,
-        .Cherries   => SpriteCodeCherries,
+        .None => SpriteCodeInvisible,
+        .Cherries => SpriteCodeCherries,
         .Strawberry => SpriteCodeStrawberry,
-        .Peach      => SpriteCodePeach,
-        .Apple      => SpriteCodeApple,
-        .Grapes     => SpriteCodeGrapes,
-        .Galaxian   => SpriteCodeGalaxian,
-        .Bell       => SpriteCodeBell,
-        .Key        => SpriteCodeKey,
+        .Peach => SpriteCodePeach,
+        .Apple => SpriteCodeApple,
+        .Grapes => SpriteCodeGrapes,
+        .Galaxian => SpriteCodeGalaxian,
+        .Bell => SpriteCodeBell,
+        .Key => SpriteCodeKey,
     };
 }
 
 // convert an actor pos (origin at center) to a sprite pos (origin at topleft)
 fn actorToSpritePos(actorPos: ivec2) ivec2 {
-    return .{ .x = actorPos.x - SpriteWidth/2, .y = actorPos.y - SpriteHeight/2 };
+    return .{ .x = actorPos.x - SpriteWidth / 2, .y = actorPos.y - SpriteHeight / 2 };
 }
 
 // get pointer to ghost by type
 fn ghostPtr(t: GhostType) *Ghost {
-    return &state.game.ghosts[@enumToInt(t)];
+    return &state.game.ghosts[@intFromEnum(t)];
 }
 
 // shortcut: get pointers to ghosts by name
@@ -650,20 +647,20 @@ fn clyde() *Ghost {
 // (same as startingPos except Blinky's)
 fn ghostHouseTargetPos(t: GhostType) ivec2 {
     return switch (t) {
-        .Blinky => .{ .x=14*8, .y=17*8 + 4 },
-        .Pinky  => .{ .x=14*8, .y=17*8 + 4 },
-        .Inky   => .{ .x=12*8, .y=17*8 + 4 },
-        .Clyde  => .{ .x=16*8, .y=17*8 + 4 },
+        .Blinky => .{ .x = 14 * 8, .y = 17 * 8 + 4 },
+        .Pinky => .{ .x = 14 * 8, .y = 17 * 8 + 4 },
+        .Inky => .{ .x = 12 * 8, .y = 17 * 8 + 4 },
+        .Clyde => .{ .x = 16 * 8, .y = 17 * 8 + 4 },
     };
 }
 
 // ghost scatter target positions in tile coords
 fn scatterTargetPos(t: GhostType) ivec2 {
     return switch (t) {
-        .Blinky => .{ .x=25, .y= 0 },
-        .Pinky  => .{ .x= 2, .y= 0 },
-        .Inky   => .{ .x=27, .y=34 },
-        .Clyde  => .{ .x= 0, .y=34 },
+        .Blinky => .{ .x = 25, .y = 0 },
+        .Pinky => .{ .x = 2, .y = 0 },
+        .Inky => .{ .x = 27, .y = 34 },
+        .Clyde => .{ .x = 0, .y = 34 },
     };
 }
 
@@ -719,8 +716,7 @@ fn canMove(pixel_pos: ivec2, wanted_dir: Dir, allow_cornering: bool) bool {
     if ((!allow_cornering and (0 != perp_dist_mid)) or (is_blocked and (0 == move_dist_mid))) {
         // way is blocked
         return false;
-    }
-    else {
+    } else {
         // way is free
         return true;
     }
@@ -735,20 +731,24 @@ fn move(pixel_pos: ivec2, dir: Dir, allow_cornering: bool) ivec2 {
     if (allow_cornering) {
         const dist_mid = distToTileMid(pos);
         if (dir_vec.x != 0) {
-            if (dist_mid.y < 0)        { pos.y -= 1; }
-            else if (dist_mid.y > 0)   { pos.y += 1; }
-        }
-        else if (dir_vec.y != 0) {
-            if (dist_mid.x < 0)        { pos.x -= 1; }
-            else if (dist_mid.x > 0)   { pos.x += 1; }
+            if (dist_mid.y < 0) {
+                pos.y -= 1;
+            } else if (dist_mid.y > 0) {
+                pos.y += 1;
+            }
+        } else if (dir_vec.y != 0) {
+            if (dist_mid.x < 0) {
+                pos.x -= 1;
+            } else if (dist_mid.x > 0) {
+                pos.x += 1;
+            }
         }
     }
 
     // wrap x position around (only possible inside teleport tunnel)
     if (pos.x < 0) {
         pos.x = DisplayPixelsX - 1;
-    }
-    else if (pos.x >= DisplayPixelsX) {
+    } else if (pos.x >= DisplayPixelsX) {
         pos.x = 0;
     }
     return pos;
@@ -759,7 +759,7 @@ fn spritePacman() *Sprite {
     return &state.gfx.sprites[0];
 }
 fn spriteGhost(ghost_type: GhostType) *Sprite {
-    return &state.gfx.sprites[@enumToInt(ghost_type) + 1];
+    return &state.gfx.sprites[@intFromEnum(ghost_type) + 1];
 }
 fn spriteBlinky() *Sprite {
     return &state.gfx.sprites[1];
@@ -781,12 +781,12 @@ fn spriteFruit() *Sprite {
 fn spriteImagePacman(dir: Dir, tick: u32) void {
     const tiles = [2][4]u8{
         .{ 44, 46, 48, 46 }, // horizontal (needs flipx)
-        .{ 45, 47, 48, 47 }  // vertical (needs flipy)
+        .{ 45, 47, 48, 47 }, // vertical (needs flipy)
     };
     const phase = (tick / 2) & 3;
     var spr = spritePacman();
     spr.enabled = true;
-    spr.tile = tiles[@enumToInt(dir) & 1][phase];
+    spr.tile = tiles[@intFromEnum(dir) & 1][phase];
     spr.color = ColorCodePacman;
     spr.flipx = (dir == .Left);
     spr.flipy = (dir == .Up);
@@ -797,7 +797,7 @@ fn spriteImagePacmanDeath(tick: u32) void {
     // the death animation tile sequence starts at sprite tile number 52 and ends at 63
     const tile: u32 = math.clamp(52 + (tick / 8), 0, 63);
     var spr = spritePacman();
-    spr.tile = @intCast(u8, tile);
+    spr.tile = @as(u8, @intCast(tile));
     spr.flipx = false;
     spr.flipy = false;
 }
@@ -805,15 +805,15 @@ fn spriteImagePacmanDeath(tick: u32) void {
 // set sprite image to animated ghost
 fn spriteImageGhost(ghost_type: GhostType, dir: Dir, tick: u32) void {
     const tiles = [4][2]u8{
-        .{ 32, 33 },   // right
-        .{ 34, 35 },   // down
-        .{ 36, 37 },   // left
-        .{ 38, 39 },   // up
+        .{ 32, 33 }, // right
+        .{ 34, 35 }, // down
+        .{ 36, 37 }, // left
+        .{ 38, 39 }, // up
     };
     const phase = (tick / 8) & 1;
     var spr = spriteGhost(ghost_type);
-    spr.tile = tiles[@enumToInt(dir)][phase];
-    spr.color = ColorCodeBlinky + @enumToInt(ghost_type)*2;
+    spr.tile = tiles[@intFromEnum(dir)][phase];
+    spr.color = ColorCodeBlinky + @intFromEnum(ghost_type) * 2;
 }
 
 // set sprite image to frightened ghost
@@ -825,8 +825,7 @@ fn spriteImageGhostFrightened(ghost_type: GhostType, tick: u32, blinking_tick: u
     if (tick > blinking_tick) {
         // towards end of frightened period, start blinking
         spr.color = if (0 != (tick & 0x10)) ColorCodeFrightened else ColorCodeFrightenedBlinking;
-    }
-    else {
+    } else {
         spr.color = ColorCodeFrightened;
     }
 }
@@ -837,7 +836,7 @@ fn spriteImageGhostFrightened(ghost_type: GhostType, tick: u32, blinking_tick: u
 fn spriteImageGhostEyes(ghost_type: GhostType, dir: Dir) void {
     const tiles = [4]u8{ 32, 34, 36, 38 };
     var spr = spriteGhost(ghost_type);
-    spr.tile = tiles[@enumToInt(dir)];
+    spr.tile = tiles[@intFromEnum(dir)];
     spr.color = ColorCodeEyes;
 }
 
@@ -851,7 +850,7 @@ fn gameTick() void {
         // debug: skip predule
         const prelude_ticks_per_sec = if (DbgSkipPrelude) 1 else 60;
         start(&state.gfx.fadein);
-        startAfter(&state.game.ready_started, 2*prelude_ticks_per_sec);
+        startAfter(&state.game.ready_started, 2 * prelude_ticks_per_sec);
         soundPrelude();
         gameInit();
     }
@@ -860,20 +859,19 @@ fn gameTick() void {
     if (now(state.game.ready_started)) {
         gameRoundInit();
         // after 2 seconds, start the interactive game loop
-        startAfter(&state.game.round_started, 2*60 + 10);
+        startAfter(&state.game.round_started, 2 * 60 + 10);
     }
     if (now(state.game.round_started)) {
         state.game.freeze &= ~FreezeReady;
         // clear the READY! message
-        gfxColorText(.{.x=11,.y=20}, ColorCodeDot, "      ");
+        gfxColorText(.{ .x = 11, .y = 20 }, ColorCodeDot, "      ");
         soundWeeooh();
     }
 
     // activate/deactivate bonus fruit
     if (now(state.game.fruit_active)) {
         state.game.active_fruit = levelSpec(state.game.round).bonus_fruit;
-    }
-    else if (afterOnce(state.game.fruit_active, FruitActiveTicks)) {
+    } else if (afterOnce(state.game.fruit_active, FruitActiveTicks)) {
         state.game.active_fruit = .None;
     }
 
@@ -913,7 +911,7 @@ fn gameTick() void {
         startAfter(&state.game.ready_started, RoundWonTicks);
     }
     if (now(state.game.game_over)) {
-        gfxColorText(.{.x=9,.y=20}, 1, "GAME  OVER");
+        gfxColorText(.{ .x = 9, .y = 20 }, 1, "GAME  OVER");
         inputDisable();
         startAfter(&state.gfx.fadeout, GameOverTicks);
         startAfter(&state.intro.started, GameOverTicks + FadeTicks);
@@ -943,8 +941,8 @@ fn gameTick() void {
             state.gfx.debug_markers[i] = .{
                 .enabled = true,
                 .tile = tile,
-                .color = @intCast(u8, ColorCodeBlinky + 2*i),
-                .tile_pos = clampedTilePos(ghost.target_pos)
+                .color = @as(u8, @intCast(ColorCodeBlinky + 2 * i)),
+                .tile_pos = clampedTilePos(ghost.target_pos),
             };
         }
     }
@@ -989,8 +987,8 @@ fn gameUpdateActors() void {
         }
         // check if Pacman eats the bonus fruit
         if (state.game.active_fruit != .None) {
-            const test_pos = pixelToTilePos(ivec2.add(actor.pos, .{.x=TileWidth/2,.y=0}));
-            if (ivec2.equal(test_pos, .{.x=14,.y=20})) {
+            const test_pos = pixelToTilePos(ivec2.add(actor.pos, .{ .x = TileWidth / 2, .y = 0 }));
+            if (ivec2.equal(test_pos, .{ .x = 14, .y = 20 })) {
                 start(&state.game.fruit_eaten);
                 state.game.score += levelSpec(state.game.round).bonus_score;
                 gfxFruitScore(state.game.active_fruit);
@@ -1024,13 +1022,12 @@ fn gameUpdateActors() void {
                             // if Pacman has any lives left, start a new round, otherwise start the game over sequence
                             if (state.game.num_lives > 0) {
                                 startAfter(&state.game.ready_started, PacmanEatenTicks + PacmanDeathTicks);
-                            }
-                            else {
+                            } else {
                                 startAfter(&state.game.game_over, PacmanEatenTicks + PacmanDeathTicks);
                             }
                         }
                     },
-                    else => {}
+                    else => {},
                 }
             }
         }
@@ -1045,7 +1042,7 @@ fn gameUpdateActors() void {
         // finally, move the ghost towards its target position
         const num_move_ticks = gameGhostSpeed(ghost);
         var i: u32 = 0;
-        while (i < num_move_ticks): (i += 1) {
+        while (i < num_move_ticks) : (i += 1) {
             const force_move = gameUpdateGhostDir(ghost);
             const allow_cornering = false;
             if (force_move or canMove(ghost.actor.pos, ghost.actor.dir, allow_cornering)) {
@@ -1067,7 +1064,7 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
             // target position in front of the ghost house has been reached, then
             // switch into ENTERHOUSE state. Since ghosts in eye state move faster
             // than one pixel per tick, do a fuzzy comparison with the target pos
-            if (ivec2.nearEqual(ghost.actor.pos, .{ .x=AntePortasX, .y=AntePortasY}, 1)) {
+            if (ivec2.nearEqual(ghost.actor.pos, .{ .x = AntePortasX, .y = AntePortasY }, 1)) {
                 new_state = .EnterHouse;
             }
         },
@@ -1082,14 +1079,13 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
             // Ghosts only remain in the "house state" after a new game round
             // has been started. The conditions when ghosts leave the house
             // are a bit complicated, best to check the Pacman Dossier for the details.
-            if (afterOnce(state.game.force_leave_house, 4*60)) {
+            if (afterOnce(state.game.force_leave_house, 4 * 60)) {
                 // if Pacman hasn't eaten dots for 4 seconds, the next ghost
                 // is forced out of the house
                 // FIXME: time is reduced to 3 seconds after round 5
                 new_state = .LeaveHouse;
                 start(&state.game.force_leave_house);
-            }
-            else if (state.game.global_dot_counter_active) {
+            } else if (state.game.global_dot_counter_active) {
                 // if Pacman has lost a life this round, the global dot counter is used
                 const dot_counter_limit: u32 = switch (ghost.type) {
                     .Blinky => 0,
@@ -1105,8 +1101,7 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
                         state.game.global_dot_counter_active = false;
                     }
                 }
-            }
-            else if (ghost.dot_counter == ghost.dot_limit) {
+            } else if (ghost.dot_counter == ghost.dot_limit) {
                 // in the normal case, check the ghost's personal dot counter
                 new_state = .LeaveHouse;
             }
@@ -1121,19 +1116,27 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
             // all other states: switch between frightened, scatter and chase states
             if (before(ghost.frightened, levelSpec(state.game.round).fright_ticks)) {
                 new_state = .Frightened;
-            }
-            else {
+            } else {
                 const t = since(state.game.round_started);
-                if (t < 7*60)       { new_state = .Scatter; }
-                else if (t < 27*60) { new_state = .Chase; }
-                else if (t < 34*60) { new_state = .Scatter; }
-                else if (t < 54*60) { new_state = .Chase; }
-                else if (t < 59*60) { new_state = .Scatter; }
-                else if (t < 79*60) { new_state = .Chase; }
-                else if (t < 84*60) { new_state = .Scatter; }
-                else                { new_state = .Chase; }
+                if (t < 7 * 60) {
+                    new_state = .Scatter;
+                } else if (t < 27 * 60) {
+                    new_state = .Chase;
+                } else if (t < 34 * 60) {
+                    new_state = .Scatter;
+                } else if (t < 54 * 60) {
+                    new_state = .Chase;
+                } else if (t < 59 * 60) {
+                    new_state = .Scatter;
+                } else if (t < 79 * 60) {
+                    new_state = .Chase;
+                } else if (t < 84 * 60) {
+                    new_state = .Scatter;
+                } else {
+                    new_state = .Chase;
+                }
             }
-        }
+        },
     }
 
     // handle state transitions
@@ -1155,7 +1158,7 @@ fn gameUpdateGhostState(ghost: *Ghost) void {
                 // any transition from scatter and chase mode causes a reversal of direction
                 ghost.next_dir = reverseDir(ghost.actor.dir);
             },
-            else => {}
+            else => {},
         }
         ghost.state = new_state;
     }
@@ -1184,25 +1187,24 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
                 .Pinky => {
                     // Pinky target is 4 tiles ahead of Pacman
                     // FIXME: does not reproduce 'diagonal overflow'
-                    ghost.target_pos = ivec2.add(pm_pos, ivec2.mul(pm_dir, .{.x=4,.y=4}));
+                    ghost.target_pos = ivec2.add(pm_pos, ivec2.mul(pm_dir, .{ .x = 4, .y = 4 }));
                 },
                 .Inky => {
                     // Inky targets an extrapolated pos along a line two tiles
                     // ahead of Pacman through Blinky
                     const blinky_pos = pixelToTilePos(blinky().actor.pos);
-                    const d = ivec2.sub(ivec2.add(pm_pos, ivec2.mul(pm_dir, .{.x=2,.y=2})), blinky_pos);
-                    ghost.target_pos = ivec2.add(blinky_pos, ivec2.mul(d, .{.x=2,.y=2}));
+                    const d = ivec2.sub(ivec2.add(pm_pos, ivec2.mul(pm_dir, .{ .x = 2, .y = 2 })), blinky_pos);
+                    ghost.target_pos = ivec2.add(blinky_pos, ivec2.mul(d, .{ .x = 2, .y = 2 }));
                 },
                 .Clyde => {
                     // if Clyde is far away from Pacman, he chases Pacman,
                     // but if close he moves towards the scatter target
                     if (ivec2.squaredDistance(pixelToTilePos(ghost.actor.pos), pm_pos) > 64) {
                         ghost.target_pos = pm_pos;
-                    }
-                    else {
+                    } else {
                         ghost.target_pos = scatterTargetPos(.Clyde);
                     }
-                }
+                },
             }
         },
         .Frightened => {
@@ -1210,15 +1212,15 @@ fn gameUpdateGhostTarget(ghost: *Ghost) void {
             // this has the effect that ghosts in frightened state
             // move in a random direction at each intersection
             ghost.target_pos = .{
-                .x = @intCast(i16, xorshift32() % DisplayTilesX),
-                .y = @intCast(i16, xorshift32() % DisplayTilesY)
+                .x = @as(i16, @intCast(xorshift32() % DisplayTilesX)),
+                .y = @as(i16, @intCast(xorshift32() % DisplayTilesY)),
             };
         },
         .Eyes => {
             // move towards the ghost house door
-            ghost.target_pos = .{ .x=13, .y=14 };
+            ghost.target_pos = .{ .x = 13, .y = 14 };
         },
-        else => {}
+        else => {},
     }
 }
 
@@ -1229,10 +1231,9 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
     switch (ghost.state) {
         .House => {
             // inside ghost house, just move up and down
-            if (ghost.actor.pos.y <= 17*TileHeight) {
+            if (ghost.actor.pos.y <= 17 * TileHeight) {
                 ghost.next_dir = .Down;
-            }
-            else if (ghost.actor.pos.y >= 18*TileHeight) {
+            } else if (ghost.actor.pos.y >= 18 * TileHeight) {
                 ghost.next_dir = .Up;
             }
             ghost.actor.dir = ghost.next_dir;
@@ -1246,16 +1247,13 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
                 if (pos.y > AntePortasY) {
                     ghost.next_dir = .Up;
                 }
-            }
-            else {
-                const mid_y: i16 = 17*TileHeight + TileHeight/2;
+            } else {
+                const mid_y: i16 = 17 * TileHeight + TileHeight / 2;
                 if (pos.y > mid_y) {
                     ghost.next_dir = .Up;
-                }
-                else if (pos.y < mid_y) {
+                } else if (pos.y < mid_y) {
                     ghost.next_dir = .Down;
-                }
-                else {
+                } else {
                     ghost.next_dir = if (pos.x > AntePortasX) .Left else .Right;
                 }
             }
@@ -1271,12 +1269,10 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
             if (tile_pos.y == 14) {
                 if (pos.x != AntePortasX) {
                     ghost.next_dir = if (pos.x > AntePortasX) .Left else .Right;
-                }
-                else {
+                } else {
                     ghost.next_dir = .Down;
                 }
-            }
-            else if (pos.y == tgt_pos.y) {
+            } else if (pos.y == tgt_pos.y) {
                 ghost.next_dir = if (pos.x > tgt_pos.x) .Left else .Right;
             }
             ghost.actor.dir = ghost.next_dir;
@@ -1295,7 +1291,7 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
                 const lookahead_pos = ivec2.add(pixelToTilePos(ghost.actor.pos), dir_vec);
 
                 // try each direction and take the one that's closest to the target pos
-                const dirs = [_]Dir { .Up, .Left, .Down, .Right };
+                const dirs = [_]Dir{ .Up, .Left, .Down, .Right };
                 var min_dist: i16 = 32000;
                 for (dirs) |dir| {
                     // if ghost is in one of the two 'red zones', forbid upward movement
@@ -1315,7 +1311,7 @@ fn gameUpdateGhostDir(ghost: *Ghost) bool {
             }
             // moving with blocking-check
             return false;
-        }
+        },
     }
 }
 
@@ -1325,12 +1321,10 @@ fn gamePacmanShouldMove() bool {
     if (now(state.game.dot_eaten)) {
         // eating a dot causes Pacman to stop for 1 tick
         return false;
-    }
-    else if (since(state.game.pill_eaten) < 3) {
+    } else if (since(state.game.pill_eaten) < 3) {
         // eating an energizer pill causes Pacman to stop for 3 ticks
         return false;
-    }
-    else {
+    } else {
         return 0 != (state.timing.tick % 8);
     }
 }
@@ -1352,12 +1346,11 @@ fn gameGhostSpeed(ghost: *const Ghost) u32 {
             if (isTunnel(pixelToTilePos(ghost.actor.pos))) {
                 // move drastically slower when inside tunnel
                 return if (0 != ((state.timing.tick * 2) % 4)) 1 else 0;
-            }
-            else {
+            } else {
                 // otherwise move just a bit slower than Pacman
                 return if (0 != state.timing.tick % 7) 1 else 0;
             }
-        }
+        },
     }
 }
 
@@ -1376,7 +1369,7 @@ fn gameUpdateDotsEaten() void {
             // at 70 and 170 dots, show the bonus fruit
             start(&state.game.fruit_active);
         },
-        else => {}
+        else => {},
     }
     soundEatDot(state.game.num_dots_eaten);
 }
@@ -1404,8 +1397,7 @@ fn gameUpdateGhostHouseDotCounters() void {
     // house)
     if (state.game.global_dot_counter_active) {
         state.game.global_dot_counter += 1;
-    }
-    else {
+    } else {
         // otherwise each ghost has his own personal dot counter to decide
         // when to leave the ghost house, the dot counter is only increments
         // for the first ghost below the dot limit
@@ -1445,10 +1437,10 @@ fn gameInit() void {
 
     // draw the playfield and PLAYER ONE READY! message
     gfxClear(TileCodeSpace, ColorCodeDot);
-    gfxColorText(.{.x=9,.y=0}, ColorCodeDefault, "HIGH SCORE");
+    gfxColorText(.{ .x = 9, .y = 0 }, ColorCodeDefault, "HIGH SCORE");
     gameInitPlayfield();
-    gfxColorText(.{.x=9,.y=14}, 5, "PLAYER ONE");
-    gfxColorText(.{.x=11,.y=20}, 9, "READY!");
+    gfxColorText(.{ .x = 9, .y = 14 }, 5, "PLAYER ONE");
+    gfxColorText(.{ .x = 11, .y = 20 }, 9, "READY!");
 }
 
 // initialize the playfield background tiles
@@ -1456,53 +1448,88 @@ fn gameInitPlayfield() void {
     gfxClearPlayfieldToColor(ColorCodeDot);
     // decode the playfield data from an ASCII map
     const tiles =
-       \\0UUUUUUUUUUUU45UUUUUUUUUUUU1
-       \\L............rl............R
-       \\L.ebbf.ebbbf.rl.ebbbf.ebbf.R
-       \\LPr__l.r___l.rl.r___l.r__lPR
-       \\L.guuh.guuuh.gh.guuuh.guuh.R
-       \\L..........................R
-       \\L.ebbf.ef.ebbbbbbf.ef.ebbf.R
-       \\L.guuh.rl.guuyxuuh.rl.guuh.R
-       \\L......rl....rl....rl......R
-       \\2BBBBf.rzbbf_rl_ebbwl.eBBBB3
-       \\_____L.rxuuh_gh_guuyl.R_____
-       \\_____L.rl__________rl.R_____
-       \\_____L.rl_mjs--tjn_rl.R_____
-       \\UUUUUh.gh_i______q_gh.gUUUUU
-       \\______.___i______q___.______
-       \\BBBBBf.ef_i______q_ef.eBBBBB
-       \\_____L.rl_okkkkkkp_rl.R_____
-       \\_____L.rl__________rl.R_____
-       \\_____L.rl_ebbbbbbf_rl.R_____
-       \\0UUUUh.gh_guuyxuuh_gh.gUUUU1
-       \\L............rl............R
-       \\L.ebbf.ebbbf.rl.ebbbf.ebbf.R
-       \\L.guyl.guuuh.gh.guuuh.rxuh.R
-       \\LP..rl.......__.......rl..PR
-       \\6bf.rl.ef.ebbbbbbf.ef.rl.eb8
-       \\7uh.gh.rl.guuyxuuh.rl.gh.gu9
-       \\L......rl....rl....rl......R
-       \\L.ebbbbwzbbf.rl.ebbwzbbbbf.R
-       \\L.guuuuuuuuh.gh.guuuuuuuuh.R
-       \\L..........................R
-       \\2BBBBBBBBBBBBBBBBBBBBBBBBBB3
-       ;
+        \\0UUUUUUUUUUUU45UUUUUUUUUUUU1
+        \\L............rl............R
+        \\L.ebbf.ebbbf.rl.ebbbf.ebbf.R
+        \\LPr__l.r___l.rl.r___l.r__lPR
+        \\L.guuh.guuuh.gh.guuuh.guuh.R
+        \\L..........................R
+        \\L.ebbf.ef.ebbbbbbf.ef.ebbf.R
+        \\L.guuh.rl.guuyxuuh.rl.guuh.R
+        \\L......rl....rl....rl......R
+        \\2BBBBf.rzbbf_rl_ebbwl.eBBBB3
+        \\_____L.rxuuh_gh_guuyl.R_____
+        \\_____L.rl__________rl.R_____
+        \\_____L.rl_mjs--tjn_rl.R_____
+        \\UUUUUh.gh_i______q_gh.gUUUUU
+        \\______.___i______q___.______
+        \\BBBBBf.ef_i______q_ef.eBBBBB
+        \\_____L.rl_okkkkkkp_rl.R_____
+        \\_____L.rl__________rl.R_____
+        \\_____L.rl_ebbbbbbf_rl.R_____
+        \\0UUUUh.gh_guuyxuuh_gh.gUUUU1
+        \\L............rl............R
+        \\L.ebbf.ebbbf.rl.ebbbf.ebbf.R
+        \\L.guyl.guuuh.gh.guuuh.rxuh.R
+        \\LP..rl.......__.......rl..PR
+        \\6bf.rl.ef.ebbbbbbf.ef.rl.eb8
+        \\7uh.gh.rl.guuyxuuh.rl.gh.gu9
+        \\L......rl....rl....rl......R
+        \\L.ebbbbwzbbf.rl.ebbwzbbbbf.R
+        \\L.guuuuuuuuh.gh.guuuuuuuuh.R
+        \\L..........................R
+        \\2BBBBBBBBBBBBBBBBBBBBBBBBBB3
+    ;
     // map ASCII to tile codes
     var t = [_]u8{TileCodeDot} ** 128;
-    t['_']=0x40; t['0']=0xD1; t['1']=0xD0; t['2']=0xD5; t['3']=0xD4; t['4']=0xFB;
-    t['5']=0xFA; t['6']=0xD7; t['7']=0xD9; t['8']=0xD6; t['9']=0xD8; t['U']=0xDB;
-    t['L']=0xD3; t['R']=0xD2; t['B']=0xDC; t['b']=0xDF; t['e']=0xE7; t['f']=0xE6;
-    t['g']=0xEB; t['h']=0xEA; t['l']=0xE8; t['r']=0xE9; t['u']=0xE5; t['w']=0xF5;
-    t['x']=0xF2; t['y']=0xF3; t['z']=0xF4; t['m']=0xED; t['n']=0xEC; t['o']=0xEF;
-    t['p']=0xEE; t['j']=0xDD; t['i']=0xD2; t['k']=0xDB; t['q']=0xD3; t['s']=0xF1;
-    t['t']=0xF0; t['-']=TileCodeDoor; t['P']=TileCodePill;
+    t['_'] = 0x40;
+    t['0'] = 0xD1;
+    t['1'] = 0xD0;
+    t['2'] = 0xD5;
+    t['3'] = 0xD4;
+    t['4'] = 0xFB;
+    t['5'] = 0xFA;
+    t['6'] = 0xD7;
+    t['7'] = 0xD9;
+    t['8'] = 0xD6;
+    t['9'] = 0xD8;
+    t['U'] = 0xDB;
+    t['L'] = 0xD3;
+    t['R'] = 0xD2;
+    t['B'] = 0xDC;
+    t['b'] = 0xDF;
+    t['e'] = 0xE7;
+    t['f'] = 0xE6;
+    t['g'] = 0xEB;
+    t['h'] = 0xEA;
+    t['l'] = 0xE8;
+    t['r'] = 0xE9;
+    t['u'] = 0xE5;
+    t['w'] = 0xF5;
+    t['x'] = 0xF2;
+    t['y'] = 0xF3;
+    t['z'] = 0xF4;
+    t['m'] = 0xED;
+    t['n'] = 0xEC;
+    t['o'] = 0xEF;
+    t['p'] = 0xEE;
+    t['j'] = 0xDD;
+    t['i'] = 0xD2;
+    t['k'] = 0xDB;
+    t['q'] = 0xD3;
+    t['s'] = 0xF1;
+    t['t'] = 0xF0;
+    t['-'] = TileCodeDoor;
+    t['P'] = TileCodePill;
     var y: i16 = 3;
     var i: usize = 0;
-    while (y < DisplayTilesY-2): (y += 1) {
+    while (y < DisplayTilesY - 2) : (y += 1) {
         var x: i16 = 0;
-        while (x < DisplayTilesX): ({ x += 1; i += 1; }) {
-            gfxTile(.{.x=x,.y=y}, t[tiles[i] & 127]);
+        while (x < DisplayTilesX) : ({
+            x += 1;
+            i += 1;
+        }) {
+            gfxTile(.{ .x = x, .y = y }, t[tiles[i] & 127]);
         }
         // skip newline
         if (tiles[i] == '\r') {
@@ -1514,8 +1541,8 @@ fn gameInitPlayfield() void {
     }
 
     // ghost house door color
-    gfxColor(.{.x=13,.y=15}, 0x18);
-    gfxColor(.{.x=14,.y=15}, 0x18);
+    gfxColor(.{ .x = 13, .y = 15 }, 0x18);
+    gfxColor(.{ .x = 14, .y = 15 }, 0x18);
 }
 
 // initialize a new game round
@@ -1523,7 +1550,7 @@ fn gameRoundInit() void {
     gfxClearSprites();
 
     // clear the PLAYER ONE text
-    gfxColorText(.{.x=9,.y=14}, ColorCodeDot, "          ");
+    gfxColorText(.{ .x = 9, .y = 14 }, ColorCodeDot, "          ");
 
     // if a new round was started because Pacman had won (eaten all dots),
     // redraw the playfield and reset the global dot counter
@@ -1532,8 +1559,7 @@ fn gameRoundInit() void {
         state.game.num_dots_eaten = 0;
         state.game.global_dot_counter_active = false;
         gameInitPlayfield();
-    }
-    else {
+    } else {
         // if the previous round was lost, use the global dot counter
         // to detect when ghosts should leave the ghost house instead
         // of the per-ghost dot counter
@@ -1551,34 +1577,24 @@ fn gameRoundInit() void {
     state.game.num_ghosts_eaten = 0;
     gameInitTriggers();
 
-    gfxColorText(.{.x=11,.y=20}, 9, "READY!");
+    gfxColorText(.{ .x = 11, .y = 20 }, 9, "READY!");
 
     // the force-house trigger forces ghosts out of the house if Pacman
     // hasn't been eating dots for a while
     start(&state.game.force_leave_house);
 
     // Pacman starts running to the left
-    state.game.pacman = .{
-        .actor = .{
-            .dir = .Left,
-            .pos = .{ .x=14*8, .y=26*8+4 }
-        }
-    };
+    state.game.pacman = .{ .actor = .{ .dir = .Left, .pos = .{ .x = 14 * 8, .y = 26 * 8 + 4 } } };
     // Blinky starts outside the ghost house, looking to the left and in scatter mode
-    blinky().* = .{
-        .actor = .{
-            .dir = .Left,
-            .pos = .{ .x=14*8, .y=14*8 + 4 },
-        },
-        .type = .Blinky,
-        .next_dir = .Left,
-        .state = .Scatter
-    };
+    blinky().* = .{ .actor = .{
+        .dir = .Left,
+        .pos = .{ .x = 14 * 8, .y = 14 * 8 + 4 },
+    }, .type = .Blinky, .next_dir = .Left, .state = .Scatter };
     // Pinky starts in the middle slot of the ghost house, heading down
     pinky().* = .{
         .actor = .{
             .dir = .Down,
-            .pos = .{ .x=14*8, .y=17*8 + 4 },
+            .pos = .{ .x = 14 * 8, .y = 17 * 8 + 4 },
         },
         .type = .Pinky,
         .next_dir = .Down,
@@ -1588,7 +1604,7 @@ fn gameRoundInit() void {
     inky().* = .{
         .actor = .{
             .dir = .Up,
-            .pos = .{ .x=12*8, .y=17*8 + 4 },
+            .pos = .{ .x = 12 * 8, .y = 17 * 8 + 4 },
         },
         .type = .Inky,
         .next_dir = .Up,
@@ -1596,77 +1612,74 @@ fn gameRoundInit() void {
         .dot_limit = 30,
     };
     // Clyde starts in the righ slot of the ghost house, moving up
-    clyde().* = .{
-        .actor = .{
-            .dir = .Up,
-            .pos = .{ .x=16*8, .y=17*8 + 4 },
-        },
-        .type = .Clyde,
-        .next_dir = .Up,
-        .state = .House,
-        .dot_limit = 60
-    };
+    clyde().* = .{ .actor = .{
+        .dir = .Up,
+        .pos = .{ .x = 16 * 8, .y = 17 * 8 + 4 },
+    }, .type = .Clyde, .next_dir = .Up, .state = .House, .dot_limit = 60 };
 
     // reset sprites
     spritePacman().* = .{ .enabled = true, .color = ColorCodePacman };
     spriteBlinky().* = .{ .enabled = true, .color = ColorCodeBlinky };
-    spritePinky().*  = .{ .enabled = true, .color = ColorCodePinky  };
-    spriteInky().*   = .{ .enabled = true, .color = ColorCodeInky   };
-    spriteClyde().*  = .{ .enabled = true, .color = ColorCodeClyde  };
+    spritePinky().* = .{ .enabled = true, .color = ColorCodePinky };
+    spriteInky().* = .{ .enabled = true, .color = ColorCodeInky };
+    spriteClyde().* = .{ .enabled = true, .color = ColorCodeClyde };
 }
 
 // update dynamic background tiles
 fn gameUpdateTiles() void {
     // print score and hiscore
-    gfxColorScore(.{.x=6,.y=1}, ColorCodeDefault, state.game.score);
+    gfxColorScore(.{ .x = 6, .y = 1 }, ColorCodeDefault, state.game.score);
     if (state.game.hiscore > 0) {
-        gfxColorScore(.{.x=16,.y=1}, ColorCodeDefault, state.game.hiscore);
+        gfxColorScore(.{ .x = 16, .y = 1 }, ColorCodeDefault, state.game.hiscore);
     }
 
     // update the energizer pill state (blinking/non-blinking)
-    const pill_pos = [NumPills]ivec2 { .{.x=1,.y=6}, .{.x=26,.y=6}, .{.x=1,.y=26}, .{.x=26,.y=26} };
+    const pill_pos = [NumPills]ivec2{
+        .{ .x = 1, .y = 6 },
+        .{ .x = 26, .y = 6 },
+        .{ .x = 1, .y = 26 },
+        .{ .x = 26, .y = 26 },
+    };
     for (pill_pos) |pos| {
         if (0 != state.game.freeze) {
             gfxColor(pos, ColorCodeDot);
-        }
-        else {
+        } else {
             gfxColor(pos, if (0 != (state.timing.tick & 8)) ColorCodeDot else ColorCodeBlank);
         }
     }
 
     // clear the fruit-eaten score after Pacman has eaten a bonus fruit
-    if (afterOnce(state.game.fruit_eaten, 2*60)) {
+    if (afterOnce(state.game.fruit_eaten, 2 * 60)) {
         gfxFruitScore(.None);
     }
 
     // remaining lives in bottom-left corner
     {
         var i: i16 = 0;
-        while (i < NumLives): (i += 1) {
+        while (i < NumLives) : (i += 1) {
             const color: u8 = if (i < state.game.num_lives) ColorCodePacman else ColorCodeBlank;
-            gfxColorTileQuad(.{ .x = 2+2*i, .y = 34}, color, TileCodeLife);
+            gfxColorTileQuad(.{ .x = 2 + 2 * i, .y = 34 }, color, TileCodeLife);
         }
     }
 
     // bonus fruits in bottom-right corner
     {
-        var i: i32 = @intCast(i32,state.game.round) - 7 + 1;
+        var i: i32 = @as(i32, @intCast(state.game.round)) - 7 + 1;
         var x: i16 = 24;
-        while (i <= state.game.round): (i += 1) {
+        while (i <= state.game.round) : (i += 1) {
             if (i >= 0) {
-                const fruit = levelSpec(@intCast(u32,i)).bonus_fruit;
-                gfxColorTileQuad(.{.x=x,.y=34}, fruitColorCode(fruit), fruitTileCode(fruit));
+                const fruit = levelSpec(@as(u32, @intCast(i))).bonus_fruit;
+                gfxColorTileQuad(.{ .x = x, .y = 34 }, fruitColorCode(fruit), fruitTileCode(fruit));
                 x -= 2;
             }
         }
     }
 
     // if game round was won, render the entire playfield as blinking blue/white
-    if (after(state.game.round_won, 1*60)) {
+    if (after(state.game.round_won, 1 * 60)) {
         if (0 != (since(state.game.round_won) & 0x10)) {
             gfxClearPlayfieldToColor(ColorCodeDot);
-        }
-        else {
+        } else {
             gfxClearPlayfieldToColor(ColorCodeWhiteBorder);
         }
     }
@@ -1683,18 +1696,15 @@ fn gameUpdateSprites() void {
             if (0 != (state.game.freeze & FreezeEatGhost)) {
                 // hide Pacman shortly after he's eaten a ghost
                 spr.tile = SpriteCodeInvisible;
-            }
-            else if (0 != (state.game.freeze & (FreezePrelude|FreezeReady))) {
+            } else if (0 != (state.game.freeze & (FreezePrelude | FreezeReady))) {
                 // special case game frozen at start of round, show "closed mouth" Pacman
                 spr.tile = SpriteCodePacmanClosedMouth;
-            }
-            else if (0 != (state.game.freeze & (FreezeDead))) {
+            } else if (0 != (state.game.freeze & (FreezeDead))) {
                 // play the Pacman death animation after a short pause
                 if (after(state.game.pacman_eaten, PacmanEatenTicks)) {
                     spriteImagePacmanDeath(since(state.game.pacman_eaten) - PacmanEatenTicks);
                 }
-            }
-            else {
+            } else {
                 // regular Pacman animation
                 spriteImagePacman(actor.dir, actor.anim_tick);
             }
@@ -1716,8 +1726,7 @@ fn gameUpdateSprites() void {
             // if Pacman has won the round, hide the ghosts
             else if (0 != (state.game.freeze & FreezeWon)) {
                 spr.tile = SpriteCodeInvisible;
-            }
-            else switch (ghost.state) {
+            } else switch (ghost.state) {
                 .Eyes => {
                     if (before(ghost.eaten, GhostEatenFreezeTicks)) {
                         // if the ghost was *just* eaten by Pacman, the ghost's sprite
@@ -1725,8 +1734,7 @@ fn gameUpdateSprites() void {
                         // (200 for the first ghost, followed by 400, 800 and 1600)
                         spr.tile = SpriteCodeScore200 + state.game.num_ghosts_eaten - 1;
                         spr.color = ColorCodeGhostScore;
-                    }
-                    else {
+                    } else {
                         // afterwards the ghost's eyes are shown, heading back to the ghost house
                         spriteImageGhostEyes(ghost.type, ghost.next_dir);
                     }
@@ -1748,7 +1756,7 @@ fn gameUpdateSprites() void {
                     // is heading to, this has the effect that ghosts already look
                     // into the direction they will move into one tile ahead
                     spriteImageGhost(ghost.type, ghost.next_dir, ghost.actor.anim_tick);
-                }
+                },
             }
         }
     }
@@ -1756,13 +1764,12 @@ fn gameUpdateSprites() void {
     // hide or display the currently active bonus fruit
     if (state.game.active_fruit == .None) {
         spriteFruit().enabled = false;
-    }
-    else {
+    } else {
         spriteFruit().* = .{
             .enabled = true,
-            .pos = .{ .x = 13 * TileWidth, .y = 19 * TileHeight + TileHeight/2 },
+            .pos = .{ .x = 13 * TileWidth, .y = 19 * TileHeight + TileHeight / 2 },
             .tile = fruitSpriteCode(state.game.active_fruit),
-            .color = fruitColorCode(state.game.active_fruit)
+            .color = fruitColorCode(state.game.active_fruit),
         };
     }
 }
@@ -1776,39 +1783,42 @@ fn introTick() void {
         start(&state.gfx.fadein);
         inputEnable();
         gfxClear(TileCodeSpace, ColorCodeDefault);
-        gfxText(.{.x=3,.y=0}, "1UP   HIGH SCORE   2UP");
-        gfxColorScore(.{.x=6,.y=1}, ColorCodeDefault, 0);
+        gfxText(.{ .x = 3, .y = 0 }, "1UP   HIGH SCORE   2UP");
+        gfxColorScore(.{ .x = 6, .y = 1 }, ColorCodeDefault, 0);
         if (state.game.hiscore > 0) {
-            gfxColorScore(.{.x=16,.y=1}, ColorCodeDefault, state.game.hiscore);
+            gfxColorScore(.{ .x = 16, .y = 1 }, ColorCodeDefault, state.game.hiscore);
         }
-        gfxText(.{.x=7,.y=5}, "CHARACTER / NICKNAME");
-        gfxText(.{.x=3,.y=35}, "CREDIT 0");
+        gfxText(.{ .x = 7, .y = 5 }, "CHARACTER / NICKNAME");
+        gfxText(.{ .x = 3, .y = 35 }, "CREDIT 0");
     }
 
     // draw the animated 'ghost... name... nickname' lines
     var delay: u32 = 0;
-    const names = [_][]const u8 { "-SHADOW", "-SPEEDY", "-BASHFUL", "-POKEY" };
-    const nicknames = [_][]const u8 { "BLINKY", "PINKY", "INKY", "CLYDE" };
+    const names = [_][]const u8{ "-SHADOW", "-SPEEDY", "-BASHFUL", "-POKEY" };
+    const nicknames = [_][]const u8{ "BLINKY", "PINKY", "INKY", "CLYDE" };
     for (names, 0..) |name, i| {
-        const color: u8 = 2 * @intCast(u8,i) + 1;
-        const y: i16 = 3 * @intCast(i16,i) + 6;
+        const color: u8 = 2 * @as(u8, @intCast(i)) + 1;
+        const y: i16 = 3 * @as(i16, @intCast(i)) + 6;
 
         // 2*3 tiles ghost image
         delay += 30;
         if (afterOnce(state.intro.started, delay)) {
-            gfxColorTile(.{.x=4,.y=y+0}, color, TileCodeGhost+0); gfxColorTile(.{.x=5,.y=y+0}, color, TileCodeGhost+1);
-            gfxColorTile(.{.x=4,.y=y+1}, color, TileCodeGhost+2); gfxColorTile(.{.x=5,.y=y+1}, color, TileCodeGhost+3);
-            gfxColorTile(.{.x=4,.y=y+2}, color, TileCodeGhost+4); gfxColorTile(.{.x=5,.y=y+2}, color, TileCodeGhost+5);
+            gfxColorTile(.{ .x = 4, .y = y + 0 }, color, TileCodeGhost + 0);
+            gfxColorTile(.{ .x = 5, .y = y + 0 }, color, TileCodeGhost + 1);
+            gfxColorTile(.{ .x = 4, .y = y + 1 }, color, TileCodeGhost + 2);
+            gfxColorTile(.{ .x = 5, .y = y + 1 }, color, TileCodeGhost + 3);
+            gfxColorTile(.{ .x = 4, .y = y + 2 }, color, TileCodeGhost + 4);
+            gfxColorTile(.{ .x = 5, .y = y + 2 }, color, TileCodeGhost + 5);
         }
         // after 1 second, the name of the ghost
         delay += 60;
         if (afterOnce(state.intro.started, delay)) {
-            gfxColorText(.{.x=7,.y=y+1}, color, name);
+            gfxColorText(.{ .x = 7, .y = y + 1 }, color, name);
         }
         // after 0.5 seconds, the nickname of the ghost
         delay += 30;
         if (afterOnce(state.intro.started, delay)) {
-            gfxColorText(.{.x=17,.y=y+1}, color, nicknames[i]);
+            gfxColorText(.{ .x = 17, .y = y + 1 }, color, nicknames[i]);
         }
     }
 
@@ -1816,20 +1826,19 @@ fn introTick() void {
     // o 50 PTS
     delay += 60;
     if (afterOnce(state.intro.started, delay)) {
-        gfxColorTile(.{.x=10,.y=24}, ColorCodeDot, TileCodeDot);
-        gfxText(.{.x=12,.y=24}, "10 \x5D\x5E\x5F");
-        gfxColorTile(.{.x=10,.y=26}, ColorCodeDot, TileCodePill);
-        gfxText(.{.x=12,.y=26}, "50 \x5D\x5E\x5F");
+        gfxColorTile(.{ .x = 10, .y = 24 }, ColorCodeDot, TileCodeDot);
+        gfxText(.{ .x = 12, .y = 24 }, "10 \x5D\x5E\x5F");
+        gfxColorTile(.{ .x = 10, .y = 26 }, ColorCodeDot, TileCodePill);
+        gfxText(.{ .x = 12, .y = 26 }, "50 \x5D\x5E\x5F");
     }
 
     // blinking "press any key" text
     delay += 60;
     if (after(state.intro.started, delay)) {
         if (0 != (since(state.intro.started) & 0x20)) {
-            gfxColorText(.{.x=3,.y=31}, 3, "                       ");
-        }
-        else {
-            gfxColorText(.{.x=3,.y=31}, 3, "PRESS ANY KEY TO START!");
+            gfxColorText(.{ .x = 3, .y = 31 }, 3, "                       ");
+        } else {
+            gfxColorText(.{ .x = 3, .y = 31 }, 3, "PRESS ANY KEY TO START!");
         }
     }
 
@@ -1863,9 +1872,9 @@ fn gfxShutdown() void {
 
 fn gfxClear(tile_code: u8, color_code: u8) void {
     var y: u32 = 0;
-    while (y < DisplayTilesY): (y += 1) {
+    while (y < DisplayTilesY) : (y += 1) {
         var x: u32 = 0;
-        while (x < DisplayTilesX): (x += 1) {
+        while (x < DisplayTilesX) : (x += 1) {
             data.tile_ram[y][x] = tile_code;
             data.color_ram[y][x] = color_code;
         }
@@ -1874,24 +1883,24 @@ fn gfxClear(tile_code: u8, color_code: u8) void {
 
 fn gfxClearPlayfieldToColor(color_code: u8) void {
     var y: usize = 3;
-    while (y < (DisplayTilesY-2)): (y += 1) {
+    while (y < (DisplayTilesY - 2)) : (y += 1) {
         var x: usize = 0;
-        while (x < DisplayTilesX): (x += 1) {
+        while (x < DisplayTilesX) : (x += 1) {
             data.color_ram[y][x] = color_code;
         }
     }
 }
 
 fn gfxTileAt(pos: ivec2) u8 {
-    return data.tile_ram[@intCast(usize,pos.y)][@intCast(usize,pos.x)];
+    return data.tile_ram[@as(usize, @intCast(pos.y))][@as(usize, @intCast(pos.x))];
 }
 
 fn gfxTile(pos: ivec2, tile_code: u8) void {
-    data.tile_ram[@intCast(usize,pos.y)][@intCast(usize,pos.x)] = tile_code;
+    data.tile_ram[@as(usize, @intCast(pos.y))][@as(usize, @intCast(pos.x))] = tile_code;
 }
 
 fn gfxColor(pos: ivec2, color_code: u8) void {
-    data.color_ram[@intCast(usize,pos.y)][@intCast(usize,pos.x)] = color_code;
+    data.color_ram[@as(usize, @intCast(pos.y))][@as(usize, @intCast(pos.x))] = color_code;
 }
 
 fn gfxColorTile(pos: ivec2, color_code: u8, tile_code: u8) void {
@@ -1905,8 +1914,8 @@ fn gfxToNamcoChar(c: u8) u8 {
         '/' => 58,
         '-' => 59,
         '"' => 38,
-        '!' => 'Z'+1,
-        else => c
+        '!' => 'Z' + 1,
+        else => c,
     };
 }
 
@@ -1925,8 +1934,7 @@ fn gfxColorText(pos: ivec2, color_code: u8, text: []const u8) void {
         if (p.x < DisplayTilesX) {
             gfxColorChar(p, color_code, chr);
             p.x += 1;
-        }
-        else {
+        } else {
             break;
         }
     }
@@ -1938,8 +1946,7 @@ fn gfxText(pos: ivec2, text: []const u8) void {
         if (p.x < DisplayTilesX) {
             gfxChar(p, chr);
             p.x += 1;
-        }
-        else {
+        } else {
             break;
         }
     }
@@ -1955,9 +1962,9 @@ fn gfxColorScore(pos: ivec2, color_code: u8, score: u32) void {
     gfxColorChar(p, color_code, '0');
     p.x -= 1;
     var digit: u32 = 0;
-    while (digit < 8): (digit += 1) {
+    while (digit < 8) : (digit += 1) {
         // FIXME: should this narrowing cast not be necessary?
-        const chr: u8 = @intCast(u8, s % 10) + '0';
+        const chr: u8 = @as(u8, @intCast(s % 10)) + '0';
         if (validTilePos(p)) {
             gfxColorChar(p, color_code, chr);
             p.x -= 1;
@@ -1978,11 +1985,11 @@ fn gfxColorScore(pos: ivec2, color_code: u8, score: u32) void {
 //
 fn gfxColorTileQuad(pos: ivec2, color_code: u8, tile_code: u8) void {
     var yy: i16 = 0;
-    while (yy < 2): (yy += 1) {
+    while (yy < 2) : (yy += 1) {
         var xx: i16 = 0;
-        while (xx < 2): (xx += 1) {
-            const t: u8 = tile_code + @intCast(u8,yy)*2 + (1 - @intCast(u8,xx));
-            gfxColorTile(ivec2.add(pos, .{.x=xx,.y=yy}), color_code, t);
+        while (xx < 2) : (xx += 1) {
+            const t: u8 = tile_code + @as(u8, @intCast(yy)) * 2 + (1 - @as(u8, @intCast(xx)));
+            gfxColorTile(ivec2.add(pos, .{ .x = xx, .y = yy }), color_code, t);
         }
     }
 }
@@ -1991,19 +1998,19 @@ fn gfxColorTileQuad(pos: ivec2, color_code: u8, tile_code: u8) void {
 fn gfxFruitScore(fruit: Fruit) void {
     const color_code: u8 = if (fruit == .None) ColorCodeDot else ColorCodeFruitScore;
     const tiles: [4]u8 = switch (fruit) {
-        .None =>        .{ 0x40, 0x40, 0x40, 0x40 },
-        .Cherries =>    .{ 0x40, 0x81, 0x85, 0x40 },
-        .Strawberry =>  .{ 0x40, 0x82, 0x85, 0x40 },
-        .Peach =>       .{ 0x40, 0x83, 0x85, 0x40 },
-        .Apple =>       .{ 0x40, 0x84, 0x85, 0x40 },
-        .Grapes =>      .{ 0x40, 0x86, 0x8D, 0x8E },
-        .Galaxian =>    .{ 0x87, 0x88, 0x8D, 0x8E },
-        .Bell =>        .{ 0x89, 0x8A, 0x8D, 0x8E },
-        .Key =>         .{ 0x8B, 0x8C, 0x8D, 0x8E },
+        .None => .{ 0x40, 0x40, 0x40, 0x40 },
+        .Cherries => .{ 0x40, 0x81, 0x85, 0x40 },
+        .Strawberry => .{ 0x40, 0x82, 0x85, 0x40 },
+        .Peach => .{ 0x40, 0x83, 0x85, 0x40 },
+        .Apple => .{ 0x40, 0x84, 0x85, 0x40 },
+        .Grapes => .{ 0x40, 0x86, 0x8D, 0x8E },
+        .Galaxian => .{ 0x87, 0x88, 0x8D, 0x8E },
+        .Bell => .{ 0x89, 0x8A, 0x8D, 0x8E },
+        .Key => .{ 0x8B, 0x8C, 0x8D, 0x8E },
     };
     var i: usize = 0;
-    while (i < 4): (i += 1) {
-        gfxColorTile(.{ .x=12+@intCast(i16,i), .y=20}, color_code, tiles[i]);
+    while (i < 4) : (i += 1) {
+        gfxColorTile(.{ .x = 12 + @as(i16, @intCast(i)), .y = 20 }, color_code, tiles[i]);
     }
 }
 
@@ -2017,19 +2024,18 @@ fn gfxClearSprites() void {
 fn gfxAdjustViewport(canvas_width: f32, canvas_height: f32) void {
     assert((canvas_width > 0) and (canvas_height > 0));
     const canvas_aspect = canvas_width / canvas_height;
-    const playfield_aspect = @intToFloat(f32, DisplayTilesX) / DisplayTilesY;
+    const playfield_aspect = @as(f32, @floatFromInt(DisplayTilesX)) / DisplayTilesY;
     const border = 10.0;
     if (playfield_aspect < canvas_aspect) {
         const vp_y: f32 = border;
-        const vp_h: f32 = canvas_height - 2*border;
-        const vp_w: f32 = (canvas_height * playfield_aspect) - 2*border;
+        const vp_h: f32 = canvas_height - 2 * border;
+        const vp_w: f32 = (canvas_height * playfield_aspect) - 2 * border;
         const vp_x: f32 = (canvas_width - vp_w) * 0.5;
         sg.applyViewportf(vp_x, vp_y, vp_w, vp_h, true);
-    }
-    else {
+    } else {
         const vp_x: f32 = border;
-        const vp_w: f32 = canvas_width - 2*border;
-        const vp_h: f32 = (canvas_width / playfield_aspect) - 2*border;
+        const vp_w: f32 = canvas_width - 2 * border;
+        const vp_h: f32 = (canvas_width / playfield_aspect) - 2 * border;
         const vp_y: f32 = (canvas_height - vp_h) * 0.5;
         sg.applyViewportf(vp_x, vp_y, vp_w, vp_h, true);
     }
@@ -2047,7 +2053,7 @@ fn gfxFrame() void {
     if (state.gfx.fade > 0) {
         gfxAddFadeVertices();
     }
-    sg.updateBuffer(state.gfx.offscreen.vbuf, .{ .ptr=&data.vertices, .size=state.gfx.num_vertices * @sizeOf(Vertex) });
+    sg.updateBuffer(state.gfx.offscreen.vbuf, .{ .ptr = &data.vertices, .size = state.gfx.num_vertices * @sizeOf(Vertex) });
 
     // render tiles and sprites into offscreen render target
     sg.beginPass(state.gfx.offscreen.pass, state.gfx.pass_action);
@@ -2075,20 +2081,20 @@ fn gfxAddVertex(x: f32, y: f32, u: f32, v: f32, color_code: u32, opacity: u32) v
     vtx.y = y;
     vtx.u = u;
     vtx.v = v;
-    vtx.attr = (opacity<<8)|color_code;
+    vtx.attr = (opacity << 8) | color_code;
 }
 
 fn gfxAddTileVertices(x: u32, y: u32, tile_code: u32, color_code: u32) void {
-    const dx = 1.0 / @intToFloat(f32, DisplayTilesX);
-    const dy = 1.0 / @intToFloat(f32, DisplayTilesY);
-    const dtx = @intToFloat(f32, TileWidth) / TileTextureWidth;
-    const dty = @intToFloat(f32, TileHeight) / TileTextureHeight;
+    const dx = 1.0 / @as(f32, @floatFromInt(DisplayTilesX));
+    const dy = 1.0 / @as(f32, @floatFromInt(DisplayTilesY));
+    const dtx = @as(f32, @floatFromInt(TileWidth)) / TileTextureWidth;
+    const dty = @as(f32, @floatFromInt(TileHeight)) / TileTextureHeight;
 
-    const x0 = @intToFloat(f32, x) * dx;
+    const x0 = @as(f32, @floatFromInt(x)) * dx;
     const x1 = x0 + dx;
-    const y0 = @intToFloat(f32, y) * dy;
+    const y0 = @as(f32, @floatFromInt(y)) * dy;
     const y1 = y0 + dy;
-    const tx0 = @intToFloat(f32, tile_code) * dtx;
+    const tx0 = @as(f32, @floatFromInt(tile_code)) * dtx;
     const tx1 = tx0 + dtx;
     const ty0: f32 = 0.0;
     const ty1 = dty;
@@ -2109,15 +2115,15 @@ fn gfxAddTileVertices(x: u32, y: u32, tile_code: u32, color_code: u32) void {
 
 fn gfxUpdateFade() void {
     if (before(state.gfx.fadein, FadeTicks)) {
-        const t = @intToFloat(f32, since(state.gfx.fadein)) / FadeTicks;
-        state.gfx.fade = @floatToInt(u8, 255.0 * (1.0 - t));
+        const t = @as(f32, @floatFromInt(since(state.gfx.fadein))) / FadeTicks;
+        state.gfx.fade = @as(u8, @intFromFloat(255.0 * (1.0 - t)));
     }
     if (afterOnce(state.gfx.fadein, FadeTicks)) {
         state.gfx.fade = 0;
     }
     if (before(state.gfx.fadeout, FadeTicks)) {
-        const t = @intToFloat(f32, since(state.gfx.fadeout)) / FadeTicks;
-        state.gfx.fade = @floatToInt(u8, 255.0 * t);
+        const t = @as(f32, @floatFromInt(since(state.gfx.fadeout))) / FadeTicks;
+        state.gfx.fade = @as(u8, @intFromFloat(255.0 * t));
     }
     if (afterOnce(state.gfx.fadeout, FadeTicks)) {
         state.gfx.fade = 255;
@@ -2126,9 +2132,9 @@ fn gfxUpdateFade() void {
 
 fn gfxAddPlayfieldVertices() void {
     var y: u32 = 0;
-    while (y < DisplayTilesY): (y += 1) {
+    while (y < DisplayTilesY) : (y += 1) {
         var x: u32 = 0;
-        while (x < DisplayTilesX): (x += 1) {
+        while (x < DisplayTilesX) : (x += 1) {
             const tile_code = data.tile_ram[y][x];
             const color_code = data.color_ram[y][x] & 0x1F;
             gfxAddTileVertices(x, y, tile_code, color_code);
@@ -2137,25 +2143,25 @@ fn gfxAddPlayfieldVertices() void {
 }
 
 fn gfxAddSpriteVertices() void {
-    const dx = 1.0 / @intToFloat(f32, DisplayPixelsX);
-    const dy = 1.0 / @intToFloat(f32, DisplayPixelsY);
-    const dtx = @intToFloat(f32, SpriteWidth) / TileTextureWidth;
-    const dty = @intToFloat(f32, SpriteHeight) / TileTextureHeight;
+    const dx = 1.0 / @as(f32, @floatFromInt(DisplayPixelsX));
+    const dy = 1.0 / @as(f32, @floatFromInt(DisplayPixelsY));
+    const dtx = @as(f32, @floatFromInt(SpriteWidth)) / TileTextureWidth;
+    const dty = @as(f32, @floatFromInt(SpriteHeight)) / TileTextureHeight;
     for (&state.gfx.sprites) |*spr| {
         if (spr.enabled) {
-            const xx0 = @intToFloat(f32, spr.pos.x) * dx;
-            const xx1 = xx0 + dx*SpriteWidth;
-            const yy0 = @intToFloat(f32, spr.pos.y) * dy;
-            const yy1 = yy0 + dy*SpriteHeight;
+            const xx0 = @as(f32, @floatFromInt(spr.pos.x)) * dx;
+            const xx1 = xx0 + dx * SpriteWidth;
+            const yy0 = @as(f32, @floatFromInt(spr.pos.y)) * dy;
+            const yy1 = yy0 + dy * SpriteHeight;
 
             const x0 = if (spr.flipx) xx1 else xx0;
             const x1 = if (spr.flipx) xx0 else xx1;
             const y0 = if (spr.flipy) yy1 else yy0;
             const y1 = if (spr.flipy) yy0 else yy1;
 
-            const tx0 = @intToFloat(f32, spr.tile) * dtx;
+            const tx0 = @as(f32, @floatFromInt(spr.tile)) * dtx;
             const tx1 = tx0 + dtx;
-            const ty0 = @intToFloat(f32, TileHeight) / TileTextureHeight;
+            const ty0 = @as(f32, @floatFromInt(TileHeight)) / TileTextureHeight;
             const ty1 = ty0 + dty;
 
             gfxAddVertex(x0, y0, tx0, ty0, spr.color, 0xFF);
@@ -2171,18 +2177,18 @@ fn gfxAddSpriteVertices() void {
 fn gfxAddDebugMarkerVertices() void {
     for (&state.gfx.debug_markers) |*dbg| {
         if (dbg.enabled) {
-            gfxAddTileVertices(@intCast(u32, dbg.tile_pos.x), @intCast(u32, dbg.tile_pos.y), dbg.tile, dbg.color);
+            gfxAddTileVertices(@as(u32, @intCast(dbg.tile_pos.x)), @as(u32, @intCast(dbg.tile_pos.y)), dbg.tile, dbg.color);
         }
     }
 }
 
 fn gfxAddFadeVertices() void {
     // sprite tile 64 is a special opaque sprite
-    const dtx = @intToFloat(f32, SpriteWidth) / TileTextureWidth;
-    const dty = @intToFloat(f32, SpriteHeight) / TileTextureHeight;
+    const dtx = @as(f32, @floatFromInt(SpriteWidth)) / TileTextureWidth;
+    const dty = @as(f32, @floatFromInt(SpriteHeight)) / TileTextureHeight;
     const tx0 = 64 * dtx;
     const tx1 = tx0 + dtx;
-    const ty0 = @intToFloat(f32, TileHeight) / TileTextureHeight;
+    const ty0 = @as(f32, @floatFromInt(TileHeight)) / TileTextureHeight;
     const ty1 = ty0 + dty;
 
     const fade = state.gfx.fade;
@@ -2208,18 +2214,18 @@ fn gfxAddFadeVertices() void {
 //  Tile decoding only happens once at startup from ROM dumps into a texture.
 //
 fn gfxDecodeTile8x4(
-    tile_code: u32,     // the source tile code
-    src: []const u8,    // encoded source tile data
-    src_stride: u32,    // stride and offset in encoded tile data
+    tile_code: u32, // the source tile code
+    src: []const u8, // encoded source tile data
+    src_stride: u32, // stride and offset in encoded tile data
     src_offset: u32,
-    dst_x: u32,         // x/y position in target texture
-    dst_y: u32)
-void {
+    dst_x: u32, // x/y position in target texture
+    dst_y: u32,
+) void {
     var x: u32 = 0;
-    while (x < TileWidth): (x += 1) {
+    while (x < TileWidth) : (x += 1) {
         const ti = tile_code * src_stride + src_offset + (7 - x);
         var y: u3 = 0;
-        while (y < (TileHeight/2)): (y += 1) {
+        while (y < (TileHeight / 2)) : (y += 1) {
             const p_hi: u8 = (src[ti] >> (7 - y)) & 1;
             const p_lo: u8 = (src[ti] >> (3 - y)) & 1;
             const p: u8 = (p_hi << 1) | p_lo;
@@ -2248,30 +2254,30 @@ fn gfxDecodeSprite(sprite_code: u32) void {
     const y2 = y1 + (TileHeight / 2);
     const y3 = y2 + (TileHeight / 2);
     gfxDecodeTile8x4(sprite_code, SpriteRom, 64, 40, x0, y0);
-    gfxDecodeTile8x4(sprite_code, SpriteRom, 64,  8, x1, y0);
+    gfxDecodeTile8x4(sprite_code, SpriteRom, 64, 8, x1, y0);
     gfxDecodeTile8x4(sprite_code, SpriteRom, 64, 48, x0, y1);
     gfxDecodeTile8x4(sprite_code, SpriteRom, 64, 16, x1, y1);
     gfxDecodeTile8x4(sprite_code, SpriteRom, 64, 56, x0, y2);
     gfxDecodeTile8x4(sprite_code, SpriteRom, 64, 24, x1, y2);
     gfxDecodeTile8x4(sprite_code, SpriteRom, 64, 32, x0, y3);
-    gfxDecodeTile8x4(sprite_code, SpriteRom, 64,  0, x1, y3);
+    gfxDecodeTile8x4(sprite_code, SpriteRom, 64, 0, x1, y3);
 }
 
 // decode the Pacman tile- and sprite-ROM-dumps into an 8-bpp linear texture
 fn gfxDecodeTiles() void {
     var tile_code: u32 = 0;
-    while (tile_code < 256): (tile_code += 1) {
+    while (tile_code < 256) : (tile_code += 1) {
         gfxDecodeTile(tile_code);
     }
     var sprite_code: u32 = 0;
-    while (sprite_code < 64): (sprite_code += 1) {
+    while (sprite_code < 64) : (sprite_code += 1) {
         gfxDecodeSprite(sprite_code);
     }
     // write a special 16x16 block which will be used for the fade effect
     var y: u32 = TileHeight;
-    while (y < TileTextureHeight): (y += 1) {
+    while (y < TileTextureHeight) : (y += 1) {
         var x: u32 = 64 * SpriteWidth;
-        while (x < (65 * SpriteWidth)): (x += 1) {
+        while (x < (65 * SpriteWidth)) : (x += 1) {
             data.tile_pixels[y][x] = 1;
         }
     }
@@ -2294,10 +2300,10 @@ fn gfxDecodeColorPalette() void {
     var hw_colors: [32]u32 = undefined;
     for (&hw_colors, 0..) |*pt, i| {
         const rgb = color_rom[i];
-        const r: u32 = ((rgb>>0)&1)*0x21 + ((rgb>>1)&1)*0x47 + ((rgb>>2)&1)*0x97;
-        const g: u32 = ((rgb>>3)&1)*0x21 + ((rgb>>4)&1)*0x47 + ((rgb>>5)&1)*0x97;
-        const b: u32 =                     ((rgb>>6)&1)*0x47 + ((rgb>>7)&1)*0x97;
-        pt.* = 0xFF_00_00_00 | (b<<16) | (g<<8) | r;
+        const r: u32 = ((rgb >> 0) & 1) * 0x21 + ((rgb >> 1) & 1) * 0x47 + ((rgb >> 2) & 1) * 0x97;
+        const g: u32 = ((rgb >> 3) & 1) * 0x21 + ((rgb >> 4) & 1) * 0x47 + ((rgb >> 5) & 1) * 0x97;
+        const b: u32 = ((rgb >> 6) & 1) * 0x47 + ((rgb >> 7) & 1) * 0x97;
+        pt.* = 0xFF_00_00_00 | (b << 16) | (g << 8) | r;
     }
 
     // build 256-entry from indirection palette ROM
@@ -2313,16 +2319,10 @@ fn gfxDecodeColorPalette() void {
 
 fn gfxCreateResources() void {
     // pass action for clearing background to black
-    state.gfx.pass_action.colors[0] = .{
-        .action = .CLEAR,
-        .value = .{ .r=0, .g=0, .b=0, .a=1 }
-    };
+    state.gfx.pass_action.colors[0] = .{ .action = .CLEAR, .value = .{ .r = 0, .g = 0, .b = 0, .a = 1 } };
 
     // create a dynamic vertex buffer for the tile and sprite quads
-    state.gfx.offscreen.vbuf = sg.makeBuffer(.{
-        .usage = .STREAM,
-        .size = @sizeOf(@TypeOf(data.vertices))
-    });
+    state.gfx.offscreen.vbuf = sg.makeBuffer(.{ .usage = .STREAM, .size = @sizeOf(@TypeOf(data.vertices)) });
 
     // create a quad-vertex-buffer for rendering the offscreen render target to the display
     const quad_verts = [_]f32{ 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0 };
@@ -2340,17 +2340,17 @@ fn gfxCreateResources() void {
         shd_desc.attrs[2] = .{ .name = "data_in", .sem_name = "TEXCOORD", .sem_index = 1 };
         shd_desc.fs.images[0] = .{ .name = "tile_tex", .image_type = ._2D };
         shd_desc.fs.images[1] = .{ .name = "pal_tex", .image_type = ._2D };
-        shd_desc.vs.source = switch(sg.queryBackend()) {
-            .D3D11       => @embedFile("shaders/offscreen_vs.hlsl"),
-            .GLCORE33    => @embedFile("shaders/offscreen_vs.v330.glsl"),
-            .GLES2       => @embedFile("shaders/offscreen_vs.v100.glsl"),
+        shd_desc.vs.source = switch (sg.queryBackend()) {
+            .D3D11 => @embedFile("shaders/offscreen_vs.hlsl"),
+            .GLCORE33 => @embedFile("shaders/offscreen_vs.v330.glsl"),
+            .GLES2 => @embedFile("shaders/offscreen_vs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_vs.metal"),
             else => unreachable,
         };
-        shd_desc.fs.source = switch(sg.queryBackend()) {
-            .D3D11       => @embedFile("shaders/offscreen_fs.hlsl"),
-            .GLCORE33    => @embedFile("shaders/offscreen_fs.v330.glsl"),
-            .GLES2       => @embedFile("shaders/offscreen_fs.v100.glsl"),
+        shd_desc.fs.source = switch (sg.queryBackend()) {
+            .D3D11 => @embedFile("shaders/offscreen_fs.hlsl"),
+            .GLCORE33 => @embedFile("shaders/offscreen_fs.v330.glsl"),
+            .GLES2 => @embedFile("shaders/offscreen_fs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_fs.metal"),
             else => unreachable,
         };
@@ -2364,11 +2364,7 @@ fn gfxCreateResources() void {
         pip_desc.layout.attrs[1].format = .FLOAT2;
         pip_desc.layout.attrs[2].format = .UBYTE4N;
         pip_desc.colors[0].pixel_format = .RGBA8;
-        pip_desc.colors[0].blend = .{
-            .enabled = true,
-            .src_factor_rgb = .SRC_ALPHA,
-            .dst_factor_rgb = .ONE_MINUS_SRC_ALPHA
-        };
+        pip_desc.colors[0].blend = .{ .enabled = true, .src_factor_rgb = .SRC_ALPHA, .dst_factor_rgb = .ONE_MINUS_SRC_ALPHA };
         state.gfx.offscreen.pip = sg.makePipeline(pip_desc);
     }
 
@@ -2377,19 +2373,19 @@ fn gfxCreateResources() void {
         var shd_desc: sg.ShaderDesc = .{};
         shd_desc.attrs[0] = .{ .name = "pos", .sem_name = "POSITION" };
         shd_desc.fs.images[0] = .{ .name = "tex", .image_type = ._2D };
-        shd_desc.vs.source = switch(sg.queryBackend()) {
-            .D3D11       => @embedFile("shaders/display_vs.hlsl"),
-            .GLCORE33    => @embedFile("shaders/display_vs.v330.glsl"),
-            .GLES2       => @embedFile("shaders/display_vs.v100.glsl"),
+        shd_desc.vs.source = switch (sg.queryBackend()) {
+            .D3D11 => @embedFile("shaders/display_vs.hlsl"),
+            .GLCORE33 => @embedFile("shaders/display_vs.v330.glsl"),
+            .GLES2 => @embedFile("shaders/display_vs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_vs.metal"),
-            else => unreachable
+            else => unreachable,
         };
-        shd_desc.fs.source = switch(sg.queryBackend()) {
-            .D3D11       => @embedFile("shaders/display_fs.hlsl"),
-            .GLCORE33    => @embedFile("shaders/display_fs.v330.glsl"),
-            .GLES2       => @embedFile("shaders/display_fs.v100.glsl"),
+        shd_desc.fs.source = switch (sg.queryBackend()) {
+            .D3D11 => @embedFile("shaders/display_fs.hlsl"),
+            .GLCORE33 => @embedFile("shaders/display_fs.v330.glsl"),
+            .GLES2 => @embedFile("shaders/display_fs.v100.glsl"),
             .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_fs.metal"),
-            else => unreachable
+            else => unreachable,
         };
         var pip_desc: sg.PipelineDesc = .{
             .shader = sg.makeShader(shd_desc),
@@ -2400,16 +2396,7 @@ fn gfxCreateResources() void {
     }
 
     // create a render-target image with a fixed upscale ratio
-    state.gfx.offscreen.render_target = sg.makeImage(.{
-        .render_target = true,
-        .width = DisplayPixelsX * 2,
-        .height = DisplayPixelsY * 2,
-        .pixel_format = .RGBA8,
-        .min_filter = .LINEAR,
-        .mag_filter = .LINEAR,
-        .wrap_u = .CLAMP_TO_EDGE,
-        .wrap_v = .CLAMP_TO_EDGE
-    });
+    state.gfx.offscreen.render_target = sg.makeImage(.{ .render_target = true, .width = DisplayPixelsX * 2, .height = DisplayPixelsY * 2, .pixel_format = .RGBA8, .min_filter = .LINEAR, .mag_filter = .LINEAR, .wrap_u = .CLAMP_TO_EDGE, .wrap_v = .CLAMP_TO_EDGE });
 
     // a pass object for rendering into the offscreen render target
     {
@@ -2477,13 +2464,13 @@ fn soundShutdown() void {
 const WaveTableRom = @embedFile("roms/pacman_wavetable.rom");
 fn soundVoiceTick() void {
     for (&state.audio.voices) |*voice| {
-        voice.counter +%= voice.frequency;  // NOTE: add with wraparound
+        voice.counter +%= voice.frequency; // NOTE: add with wraparound
         // lookup current 4-bit sample from waveform index and
         // topmost 5 bits of the frequency counter
-        const wave_index: u8 = (@intCast(u8,voice.waveform) << 5) | @intCast(u8, voice.counter >> 15);
+        const wave_index: u8 = (@as(u8, @intCast(voice.waveform)) << 5) | @as(u8, @intCast(voice.counter >> 15));
         // sample is (-8..+7) * 16 -> -128 .. +127
-        const sample: i32 = (@intCast(i32, WaveTableRom[wave_index] & 0xF) - 8) * @intCast(i32, voice.volume);
-        voice.sample_acc += @intToFloat(f32, sample);
+        const sample: i32 = (@as(i32, @intCast(WaveTableRom[wave_index] & 0xF)) - 8) * @as(i32, @intCast(voice.volume));
+        voice.sample_acc += @as(f32, @floatFromInt(sample));
         voice.sample_div += 128.0;
     }
 }
@@ -2529,8 +2516,7 @@ fn soundTick() void {
         if (sound.func) |func| {
             // this is a procedural sound effect
             func(sound_slot);
-        }
-        else if (sound.dump) |dump| {
+        } else if (sound.dump) |dump| {
             // this is a register dump sound effect
             if (sound.cur_tick == sound.num_ticks) {
                 soundStop(sound_slot);
@@ -2546,11 +2532,11 @@ fn soundTick() void {
                     // FIXME Zig: intCasts shouldn't be necessary here, because the '&'
                     // ensures that the result fits?
                     // 20 bits frequency
-                    voice.frequency = @intCast(u20, val & ((1<<20)-1));
+                    voice.frequency = @as(u20, @intCast(val & ((1 << 20) - 1)));
                     // 3 bits waveform
-                    voice.waveform = @intCast(u3, (val>>24) & 7);
+                    voice.waveform = @as(u3, @intCast((val >> 24) & 7));
                     // 4 bits volume
-                    voice.volume = @intCast(u4, (val>>28) & 15);
+                    voice.volume = @as(u4, @intCast((val >> 28) & 15));
                 }
             }
         }
@@ -2592,7 +2578,7 @@ fn soundStart(sound_slot: usize, desc: SoundDesc) void {
             }
         }
         assert(sound.stride > 0);
-        sound.num_ticks = @intCast(u32, dump.len) / sound.stride;
+        sound.num_ticks = @as(u32, @intCast(dump.len)) / sound.stride;
     }
 }
 
@@ -2600,65 +2586,40 @@ fn soundStart(sound_slot: usize, desc: SoundDesc) void {
 // sound effects for eating dots, one going up and one going down)
 fn soundEatDot(dots_eaten: u32) void {
     if (0 != (dots_eaten & 1)) {
-        soundStart(2, .{
-            .func = soundFuncEatDot1,
-            .voice = .{ false, false, true }
-        });
-    }
-    else {
-        soundStart(2, .{
-            .func = soundFuncEatDot2,
-            .voice = .{ false, false, true }
-        });
+        soundStart(2, .{ .func = soundFuncEatDot1, .voice = .{ false, false, true } });
+    } else {
+        soundStart(2, .{ .func = soundFuncEatDot2, .voice = .{ false, false, true } });
     }
 }
 
 // start sound effect for playing the prelude song, this is a register dump effect
 fn soundPrelude() void {
-    soundStart(0, .{
-        .dump = SoundDumpPrelude[0..],
-        .voice = .{ true, true, false }
-    });
+    soundStart(0, .{ .dump = SoundDumpPrelude[0..], .voice = .{ true, true, false } });
 }
 
 // start the Pacman dying sound effect
 fn soundDead() void {
-    soundStart(2, .{
-        .dump = SoundDumpDead[0..],
-        .voice = .{ false, false, true }
-    });
+    soundStart(2, .{ .dump = SoundDumpDead[0..], .voice = .{ false, false, true } });
 }
 
 // start sound effect to eat a ghost
 fn soundEatGhost() void {
-    soundStart(2, .{
-        .func = soundFuncEatGhost,
-        .voice = .{ false, false, true }
-    });
+    soundStart(2, .{ .func = soundFuncEatGhost, .voice = .{ false, false, true } });
 }
 
 // start sound effect for eating the bonus fruit
 fn soundEatFruit() void {
-    soundStart(2, .{
-        .func = soundFuncEatFruit,
-        .voice = .{ false, false, true }
-    });
+    soundStart(2, .{ .func = soundFuncEatFruit, .voice = .{ false, false, true } });
 }
 
 // start the "weeooh" sound effect which plays in the background
 fn soundWeeooh() void {
-    soundStart(1, .{
-        .func = soundFuncWeeooh,
-        .voice = .{ false, true, false }
-    });
+    soundStart(1, .{ .func = soundFuncWeeooh, .voice = .{ false, true, false } });
 }
 
 // start the frightened sound (replaces the weeooh sound after energizer pill eaten)
 fn soundFrightened() void {
-    soundStart(1, .{
-        .func = soundFuncFrightened,
-        .voice = .{ false, true, false }
-    });
+    soundStart(1, .{ .func = soundFuncFrightened, .voice = .{ false, true, false } });
 }
 
 // procedural sound effect callback functions
@@ -2669,11 +2630,9 @@ fn soundFuncEatDot1(slot: usize) void {
         voice.volume = 12;
         voice.waveform = 2;
         voice.frequency = 0x1500;
-    }
-    else if (sound.cur_tick == 5) {
+    } else if (sound.cur_tick == 5) {
         soundStop(slot);
-    }
-    else {
+    } else {
         voice.frequency -= 0x300;
     }
 }
@@ -2685,11 +2644,9 @@ fn soundFuncEatDot2(slot: usize) void {
         voice.volume = 12;
         voice.waveform = 2;
         voice.frequency = 0x700;
-    }
-    else if (sound.cur_tick == 5) {
+    } else if (sound.cur_tick == 5) {
         soundStop(slot);
-    }
-    else {
+    } else {
         voice.frequency += 0x300;
     }
 }
@@ -2701,11 +2658,9 @@ fn soundFuncEatGhost(slot: usize) void {
         voice.volume = 12;
         voice.waveform = 5;
         voice.frequency = 0;
-    }
-    else if (sound.cur_tick == 32) {
+    } else if (sound.cur_tick == 32) {
         soundStop(slot);
-    }
-    else {
+    } else {
         voice.frequency += 20;
     }
 }
@@ -2717,14 +2672,11 @@ fn soundFuncEatFruit(slot: usize) void {
         voice.volume = 15;
         voice.waveform = 6;
         voice.frequency = 0x1600;
-    }
-    else if (sound.cur_tick == 23) {
+    } else if (sound.cur_tick == 23) {
         soundStop(slot);
-    }
-    else if (sound.cur_tick < 11) {
+    } else if (sound.cur_tick < 11) {
         voice.frequency -= 0x200;
-    }
-    else {
+    } else {
         voice.frequency += 0x200;
     }
 }
@@ -2736,11 +2688,9 @@ fn soundFuncWeeooh(slot: usize) void {
         voice.volume = 6;
         voice.waveform = 6;
         voice.frequency = 0x1000;
-    }
-    else if ((sound.cur_tick % 24) < 12) {
+    } else if ((sound.cur_tick % 24) < 12) {
         voice.frequency += 0x200;
-    }
-    else {
+    } else {
         voice.frequency -= 0x200;
     }
 }
@@ -2752,11 +2702,9 @@ fn soundFuncFrightened(slot: usize) void {
         voice.volume = 10;
         voice.waveform = 4;
         voice.frequency = 0x180;
-    }
-    else if ((sound.cur_tick % 8) == 0) {
+    } else if ((sound.cur_tick % 8) == 0) {
         voice.frequency = 0x180;
-    }
-    else {
+    } else {
         voice.frequency += 0x180;
     }
 }
@@ -2767,8 +2715,7 @@ export fn init() void {
     soundInit();
     if (DbgSkipIntro) {
         start(&state.game.started);
-    }
-    else {
+    } else {
         start(&state.intro.started);
     }
 }
@@ -2776,13 +2723,13 @@ export fn init() void {
 export fn frame() void {
 
     // run the game at a fixed tick rate regardless of frame rate
-    var frame_time_ns = @floatCast(f32, sapp.frameDuration() * 1000000000.0);
+    var frame_time_ns = @as(f32, @floatCast(sapp.frameDuration() * 1000000000.0));
     // clamp max frame duration (so the timing isn't messed up when stepping in debugger)
     if (frame_time_ns > MaxFrameTimeNS) {
         frame_time_ns = MaxFrameTimeNS;
     }
 
-    state.timing.tick_accum += @floatToInt(i32, frame_time_ns);
+    state.timing.tick_accum += @as(i32, @intFromFloat(frame_time_ns));
     while (state.timing.tick_accum > -TickToleranceNS) {
         state.timing.tick_accum -= TickDurationNS;
         state.timing.tick += 1;
@@ -2805,7 +2752,7 @@ export fn frame() void {
         }
     }
     gfxFrame();
-    soundFrame(@floatToInt(i32, frame_time_ns));
+    soundFrame(@as(i32, @intFromFloat(frame_time_ns)));
 }
 
 export fn input(ev: ?*const sapp.Event) void {
@@ -2815,16 +2762,23 @@ export fn input(ev: ?*const sapp.Event) void {
         if (state.input.enabled) {
             state.input.anykey = key_pressed;
             switch (event.key_code) {
-                .W, .UP,    => state.input.up = key_pressed,
-                .S, .DOWN,  => state.input.down = key_pressed,
-                .A, .LEFT,  => state.input.left = key_pressed,
-                .D, .RIGHT, => state.input.right = key_pressed,
-                .ESCAPE     => state.input.esc = key_pressed,
-                else => {}
+                .W,
+                .UP,
+                => state.input.up = key_pressed,
+                .S,
+                .DOWN,
+                => state.input.down = key_pressed,
+                .A,
+                .LEFT,
+                => state.input.left = key_pressed,
+                .D,
+                .RIGHT,
+                => state.input.right = key_pressed,
+                .ESCAPE => state.input.esc = key_pressed,
+                else => {},
             }
         }
-    }
-    else if ((event.type == .TOUCHES_BEGAN) or (event.type == .TOUCHES_ENDED)) {
+    } else if ((event.type == .TOUCHES_BEGAN) or (event.type == .TOUCHES_ENDED)) {
         state.input.anykey = event.type == .TOUCHES_BEGAN;
     }
 }
@@ -2873,7 +2827,7 @@ export fn emsc_main() void {
 //    |    +-- 3 bits waveform
 //    +-- 4 bits volume
 
-const SoundDumpPrelude = [490]u32 {
+const SoundDumpPrelude = [490]u32{
     0xE20002E0, 0xF0001700,
     0xD20002E0, 0xF0001700,
     0xC20002E0, 0xF0001700,
@@ -3121,7 +3075,7 @@ const SoundDumpPrelude = [490]u32 {
     0x120005C0, 0x00000E80,
 };
 
-const SoundDumpDead = [90]u32 {
+const SoundDumpDead = [90]u32{
     0xF1001F00,
     0xF1001E00,
     0xF1001D00,
