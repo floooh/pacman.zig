@@ -20,7 +20,12 @@ pub fn build(b: *Builder) void {
 
 // this is the regular build for all native platforms
 fn buildNative(b: *Builder, target: CrossTarget, optimize: Mode) !void {
-    const exe = b.addExecutable(.{ .name = "pacman", .target = target, .optimize = optimize, .root_source_file = .{ .path = "src/pacman.zig" } });
+    const exe = b.addExecutable(.{
+        .name = "pacman",
+        .target = target,
+        .optimize = optimize,
+        .root_source_file = .{ .path = "src/pacman.zig" },
+    });
     const cross_compiling_to_darwin = target.isDarwin() and (target.getOsTag() != builtin.os.tag);
     exe.addAnonymousModule("sokol", .{ .source_file = .{ .path = "src/sokol/sokol.zig" } });
     exe.linkLibrary(libSokol(b, target, optimize, cross_compiling_to_darwin, ""));
