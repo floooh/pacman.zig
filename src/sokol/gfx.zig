@@ -4,7 +4,7 @@ const builtin = @import("builtin");
 
 // helper function to convert a C string to a Zig string slice
 fn cStrToZig(c_str: [*c]const u8) [:0]const u8 {
-  return @import("std").mem.span(c_str);
+    return @import("std").mem.span(c_str);
 }
 // helper function to convert "anything" to a Range struct
 pub fn asRange(val: anytype) Range {
@@ -22,7 +22,7 @@ pub fn asRange(val: anytype) Range {
         },
         else => {
             @compileError("Cannot convert to range!");
-        }
+        },
     }
 }
 
@@ -30,6 +30,9 @@ pub const Buffer = extern struct {
     id: u32 = 0,
 };
 pub const Image = extern struct {
+    id: u32 = 0,
+};
+pub const Sampler = extern struct {
     id: u32 = 0,
 };
 pub const Shader = extern struct {
@@ -52,8 +55,10 @@ pub const invalid_id = 0;
 pub const num_shader_stages = 2;
 pub const num_inflight_frames = 2;
 pub const max_color_attachments = 4;
-pub const max_shaderstage_buffers = 8;
+pub const max_vertex_buffers = 8;
 pub const max_shaderstage_images = 12;
+pub const max_shaderstage_samplers = 8;
+pub const max_shaderstage_imagesamplerpairs = 12;
 pub const max_shaderstage_ubs = 4;
 pub const max_ub_members = 16;
 pub const max_vertex_attributes = 16;
@@ -67,7 +72,6 @@ pub const Color = extern struct {
 };
 pub const Backend = enum(i32) {
     GLCORE33,
-    GLES2,
     GLES3,
     D3D11,
     METAL_IOS,
@@ -153,12 +157,7 @@ pub const PixelformatInfo = extern struct {
     __pad: [3]u32 = [_]u32{0} ** 3,
 };
 pub const Features = extern struct {
-    instancing: bool = false,
     origin_top_left: bool = false,
-    multiple_render_targets: bool = false,
-    msaa_render_targets: bool = false,
-    imagetype_3d: bool = false,
-    imagetype_array: bool = false,
     image_clamp_to_border: bool = false,
     mrt_independent_blend_state: bool = false,
     mrt_independent_write_mask: bool = false,
@@ -172,6 +171,7 @@ pub const Limits = extern struct {
     max_image_array_layers: i32 = 0,
     max_vertex_attrs: i32 = 0,
     gl_max_vertex_uniform_vectors: i32 = 0,
+    gl_max_combined_texture_image_units: i32 = 0,
 };
 pub const ResourceState = enum(i32) {
     INITIAL,
@@ -208,11 +208,19 @@ pub const ImageType = enum(i32) {
     ARRAY,
     NUM,
 };
-pub const SamplerType = enum(i32) {
+pub const ImageSampleType = enum(i32) {
     DEFAULT,
     FLOAT,
+    DEPTH,
     SINT,
     UINT,
+    NUM,
+};
+pub const SamplerType = enum(i32) {
+    DEFAULT,
+    SAMPLE,
+    COMPARE,
+    NUM,
 };
 pub const CubeFace = enum(i32) {
     POS_X,
@@ -238,12 +246,9 @@ pub const PrimitiveType = enum(i32) {
 };
 pub const Filter = enum(i32) {
     DEFAULT,
+    NONE,
     NEAREST,
     LINEAR,
-    NEAREST_MIPMAP_NEAREST,
-    NEAREST_MIPMAP_LINEAR,
-    LINEAR_MIPMAP_NEAREST,
-    LINEAR_MIPMAP_LINEAR,
     NUM,
 };
 pub const Wrap = enum(i32) {
@@ -389,40 +394,51 @@ pub const ColorMask = enum(i32) {
     GBA = 14,
     RGBA = 15,
 };
-pub const Action = enum(i32) {
+pub const LoadAction = enum(i32) {
     DEFAULT,
     CLEAR,
     LOAD,
     DONTCARE,
-    NUM,
+};
+pub const StoreAction = enum(i32) {
+    DEFAULT,
+    STORE,
+    DONTCARE,
 };
 pub const ColorAttachmentAction = extern struct {
-    action: Action = .DEFAULT,
-    value: Color = .{ },
+    load_action: LoadAction = .DEFAULT,
+    store_action: StoreAction = .DEFAULT,
+    clear_value: Color = .{},
 };
 pub const DepthAttachmentAction = extern struct {
-    action: Action = .DEFAULT,
-    value: f32 = 0.0,
+    load_action: LoadAction = .DEFAULT,
+    store_action: StoreAction = .DEFAULT,
+    clear_value: f32 = 0.0,
 };
 pub const StencilAttachmentAction = extern struct {
-    action: Action = .DEFAULT,
-    value: u8 = 0,
+    load_action: LoadAction = .DEFAULT,
+    store_action: StoreAction = .DEFAULT,
+    clear_value: u8 = 0,
 };
 pub const PassAction = extern struct {
     _start_canary: u32 = 0,
     colors: [4]ColorAttachmentAction = [_]ColorAttachmentAction{.{}} ** 4,
-    depth: DepthAttachmentAction = .{ },
-    stencil: StencilAttachmentAction = .{ },
+    depth: DepthAttachmentAction = .{},
+    stencil: StencilAttachmentAction = .{},
     _end_canary: u32 = 0,
+};
+pub const StageBindings = extern struct {
+    images: [12]Image = [_]Image{.{}} ** 12,
+    samplers: [8]Sampler = [_]Sampler{.{}} ** 8,
 };
 pub const Bindings = extern struct {
     _start_canary: u32 = 0,
     vertex_buffers: [8]Buffer = [_]Buffer{.{}} ** 8,
     vertex_buffer_offsets: [8]i32 = [_]i32{0} ** 8,
-    index_buffer: Buffer = .{ },
+    index_buffer: Buffer = .{},
     index_buffer_offset: i32 = 0,
-    vs_images: [12]Image = [_]Image{.{}} ** 12,
-    fs_images: [12]Image = [_]Image{.{}} ** 12,
+    vs: StageBindings = .{},
+    fs: StageBindings = .{},
     _end_canary: u32 = 0,
 };
 pub const BufferDesc = extern struct {
@@ -430,16 +446,16 @@ pub const BufferDesc = extern struct {
     size: usize = 0,
     type: BufferType = .DEFAULT,
     usage: Usage = .DEFAULT,
-    data: Range = .{ },
+    data: Range = .{},
     label: [*c]const u8 = null,
     gl_buffers: [2]u32 = [_]u32{0} ** 2,
-    mtl_buffers: [2]?*const anyopaque = [_]?*const anyopaque { null } ** 2,
+    mtl_buffers: [2]?*const anyopaque = [_]?*const anyopaque{null} ** 2,
     d3d11_buffer: ?*const anyopaque = null,
     wgpu_buffer: ?*const anyopaque = null,
     _end_canary: u32 = 0,
 };
 pub const ImageData = extern struct {
-    subimage: [6][16]Range = [_][16]Range{[_]Range{ .{ } }**16}**6,
+    subimage: [6][16]Range = [_][16]Range{[_]Range{.{}} ** 16} ** 6,
 };
 pub const ImageDesc = extern struct {
     _start_canary: u32 = 0,
@@ -452,23 +468,34 @@ pub const ImageDesc = extern struct {
     usage: Usage = .DEFAULT,
     pixel_format: PixelFormat = .DEFAULT,
     sample_count: i32 = 0,
-    min_filter: Filter = .DEFAULT,
-    mag_filter: Filter = .DEFAULT,
-    wrap_u: Wrap = .DEFAULT,
-    wrap_v: Wrap = .DEFAULT,
-    wrap_w: Wrap = .DEFAULT,
-    border_color: BorderColor = .DEFAULT,
-    max_anisotropy: u32 = 0,
-    min_lod: f32 = 0.0,
-    max_lod: f32 = 0.0,
-    data: ImageData = .{ },
+    data: ImageData = .{},
     label: [*c]const u8 = null,
     gl_textures: [2]u32 = [_]u32{0} ** 2,
     gl_texture_target: u32 = 0,
-    mtl_textures: [2]?*const anyopaque = [_]?*const anyopaque { null } ** 2,
+    mtl_textures: [2]?*const anyopaque = [_]?*const anyopaque{null} ** 2,
     d3d11_texture: ?*const anyopaque = null,
     d3d11_shader_resource_view: ?*const anyopaque = null,
     wgpu_texture: ?*const anyopaque = null,
+    _end_canary: u32 = 0,
+};
+pub const SamplerDesc = extern struct {
+    _start_canary: u32 = 0,
+    min_filter: Filter = .DEFAULT,
+    mag_filter: Filter = .DEFAULT,
+    mipmap_filter: Filter = .DEFAULT,
+    wrap_u: Wrap = .DEFAULT,
+    wrap_v: Wrap = .DEFAULT,
+    wrap_w: Wrap = .DEFAULT,
+    min_lod: f32 = 0.0,
+    max_lod: f32 = 0.0,
+    border_color: BorderColor = .DEFAULT,
+    compare: CompareFunc = .DEFAULT,
+    max_anisotropy: u32 = 0,
+    label: [*c]const u8 = null,
+    gl_sampler: u32 = 0,
+    mtl_sampler: ?*const anyopaque = null,
+    d3d11_sampler: ?*const anyopaque = null,
+    wgpu_sampler: ?*const anyopaque = null,
     _end_canary: u32 = 0,
 };
 pub const ShaderAttrDesc = extern struct {
@@ -487,41 +514,54 @@ pub const ShaderUniformBlockDesc = extern struct {
     uniforms: [16]ShaderUniformDesc = [_]ShaderUniformDesc{.{}} ** 16,
 };
 pub const ShaderImageDesc = extern struct {
-    name: [*c]const u8 = null,
+    used: bool = false,
+    multisampled: bool = false,
     image_type: ImageType = .DEFAULT,
+    sample_type: ImageSampleType = .DEFAULT,
+};
+pub const ShaderSamplerDesc = extern struct {
+    used: bool = false,
     sampler_type: SamplerType = .DEFAULT,
+};
+pub const ShaderImageSamplerPairDesc = extern struct {
+    used: bool = false,
+    image_slot: i32 = 0,
+    sampler_slot: i32 = 0,
+    glsl_name: [*c]const u8 = null,
 };
 pub const ShaderStageDesc = extern struct {
     source: [*c]const u8 = null,
-    bytecode: Range = .{ },
+    bytecode: Range = .{},
     entry: [*c]const u8 = null,
     d3d11_target: [*c]const u8 = null,
     uniform_blocks: [4]ShaderUniformBlockDesc = [_]ShaderUniformBlockDesc{.{}} ** 4,
     images: [12]ShaderImageDesc = [_]ShaderImageDesc{.{}} ** 12,
+    samplers: [8]ShaderSamplerDesc = [_]ShaderSamplerDesc{.{}} ** 8,
+    image_sampler_pairs: [12]ShaderImageSamplerPairDesc = [_]ShaderImageSamplerPairDesc{.{}} ** 12,
 };
 pub const ShaderDesc = extern struct {
     _start_canary: u32 = 0,
     attrs: [16]ShaderAttrDesc = [_]ShaderAttrDesc{.{}} ** 16,
-    vs: ShaderStageDesc = .{ },
-    fs: ShaderStageDesc = .{ },
+    vs: ShaderStageDesc = .{},
+    fs: ShaderStageDesc = .{},
     label: [*c]const u8 = null,
     _end_canary: u32 = 0,
 };
-pub const BufferLayoutDesc = extern struct {
+pub const VertexBufferLayoutState = extern struct {
     stride: i32 = 0,
     step_func: VertexStep = .DEFAULT,
     step_rate: i32 = 0,
     __pad: [2]u32 = [_]u32{0} ** 2,
 };
-pub const VertexAttrDesc = extern struct {
+pub const VertexAttrState = extern struct {
     buffer_index: i32 = 0,
     offset: i32 = 0,
     format: VertexFormat = .INVALID,
     __pad: [2]u32 = [_]u32{0} ** 2,
 };
-pub const LayoutDesc = extern struct {
-    buffers: [8]BufferLayoutDesc = [_]BufferLayoutDesc{.{}} ** 8,
-    attrs: [16]VertexAttrDesc = [_]VertexAttrDesc{.{}} ** 16,
+pub const VertexLayoutState = extern struct {
+    buffers: [8]VertexBufferLayoutState = [_]VertexBufferLayoutState{.{}} ** 8,
+    attrs: [16]VertexAttrState = [_]VertexAttrState{.{}} ** 16,
 };
 pub const StencilFaceState = extern struct {
     compare: CompareFunc = .DEFAULT,
@@ -531,8 +571,8 @@ pub const StencilFaceState = extern struct {
 };
 pub const StencilState = extern struct {
     enabled: bool = false,
-    front: StencilFaceState = .{ },
-    back: StencilFaceState = .{ },
+    front: StencilFaceState = .{},
+    back: StencilFaceState = .{},
     read_mask: u8 = 0,
     write_mask: u8 = 0,
     ref: u8 = 0,
@@ -554,38 +594,39 @@ pub const BlendState = extern struct {
     dst_factor_alpha: BlendFactor = .DEFAULT,
     op_alpha: BlendOp = .DEFAULT,
 };
-pub const ColorState = extern struct {
+pub const ColorTargetState = extern struct {
     pixel_format: PixelFormat = .DEFAULT,
     write_mask: ColorMask = .DEFAULT,
-    blend: BlendState = .{ },
+    blend: BlendState = .{},
 };
 pub const PipelineDesc = extern struct {
     _start_canary: u32 = 0,
-    shader: Shader = .{ },
-    layout: LayoutDesc = .{ },
-    depth: DepthState = .{ },
-    stencil: StencilState = .{ },
+    shader: Shader = .{},
+    layout: VertexLayoutState = .{},
+    depth: DepthState = .{},
+    stencil: StencilState = .{},
     color_count: i32 = 0,
-    colors: [4]ColorState = [_]ColorState{.{}} ** 4,
+    colors: [4]ColorTargetState = [_]ColorTargetState{.{}} ** 4,
     primitive_type: PrimitiveType = .DEFAULT,
     index_type: IndexType = .DEFAULT,
     cull_mode: CullMode = .DEFAULT,
     face_winding: FaceWinding = .DEFAULT,
     sample_count: i32 = 0,
-    blend_color: Color = .{ },
+    blend_color: Color = .{},
     alpha_to_coverage_enabled: bool = false,
     label: [*c]const u8 = null,
     _end_canary: u32 = 0,
 };
 pub const PassAttachmentDesc = extern struct {
-    image: Image = .{ },
+    image: Image = .{},
     mip_level: i32 = 0,
     slice: i32 = 0,
 };
 pub const PassDesc = extern struct {
     _start_canary: u32 = 0,
     color_attachments: [4]PassAttachmentDesc = [_]PassAttachmentDesc{.{}} ** 4,
-    depth_stencil_attachment: PassAttachmentDesc = .{ },
+    resolve_attachments: [4]PassAttachmentDesc = [_]PassAttachmentDesc{.{}} ** 4,
+    depth_stencil_attachment: PassAttachmentDesc = .{},
     label: [*c]const u8 = null,
     _end_canary: u32 = 0,
 };
@@ -595,7 +636,7 @@ pub const SlotInfo = extern struct {
     ctx_id: u32 = 0,
 };
 pub const BufferInfo = extern struct {
-    slot: SlotInfo = .{ },
+    slot: SlotInfo = .{},
     update_frame_index: u32 = 0,
     append_frame_index: u32 = 0,
     append_pos: i32 = 0,
@@ -604,21 +645,22 @@ pub const BufferInfo = extern struct {
     active_slot: i32 = 0,
 };
 pub const ImageInfo = extern struct {
-    slot: SlotInfo = .{ },
+    slot: SlotInfo = .{},
     upd_frame_index: u32 = 0,
     num_slots: i32 = 0,
     active_slot: i32 = 0,
-    width: i32 = 0,
-    height: i32 = 0,
+};
+pub const SamplerInfo = extern struct {
+    slot: SlotInfo = .{},
 };
 pub const ShaderInfo = extern struct {
-    slot: SlotInfo = .{ },
+    slot: SlotInfo = .{},
 };
 pub const PipelineInfo = extern struct {
-    slot: SlotInfo = .{ },
+    slot: SlotInfo = .{},
 };
 pub const PassInfo = extern struct {
-    slot: SlotInfo = .{ },
+    slot: SlotInfo = .{},
 };
 pub const LogItem = enum(i32) {
     OK,
@@ -629,6 +671,7 @@ pub const LogItem = enum(i32) {
     GL_SHADER_COMPILATION_FAILED,
     GL_SHADER_LINKING_FAILED,
     GL_VERTEX_ATTRIBUTE_NOT_FOUND_IN_SHADER,
+    GL_TEXTURE_NAME_NOT_FOUND_IN_SHADER,
     GL_FRAMEBUFFER_INCOMPLETE,
     GL_MSAA_FRAMEBUFFER_INCOMPLETE,
     D3D11_CREATE_BUFFER_FAILED,
@@ -670,6 +713,7 @@ pub const LogItem = enum(i32) {
     WGPU_ACTIVATE_CONTEXT_FIXME,
     UNINIT_BUFFER_ACTIVE_CONTEXT_MISMATCH,
     UNINIT_IMAGE_ACTIVE_CONTEXT_MISMATCH,
+    UNINIT_SAMPLER_ACTIVE_CONTEXT_MISMATCH,
     UNINIT_SHADER_ACTIVE_CONTEXT_MISMATCH,
     UNINIT_PIPELINE_ACTIVE_CONTEXT_MISMATCH,
     UNINIT_PASS_ACTIVE_CONTEXT_MISMATCH,
@@ -678,26 +722,31 @@ pub const LogItem = enum(i32) {
     TRACE_HOOKS_NOT_ENABLED,
     DEALLOC_BUFFER_INVALID_STATE,
     DEALLOC_IMAGE_INVALID_STATE,
+    DEALLOC_SAMPLER_INVALID_STATE,
     DEALLOC_SHADER_INVALID_STATE,
     DEALLOC_PIPELINE_INVALID_STATE,
     DEALLOC_PASS_INVALID_STATE,
     INIT_BUFFER_INVALID_STATE,
     INIT_IMAGE_INVALID_STATE,
+    INIT_SAMPLER_INVALID_STATE,
     INIT_SHADER_INVALID_STATE,
     INIT_PIPELINE_INVALID_STATE,
     INIT_PASS_INVALID_STATE,
     UNINIT_BUFFER_INVALID_STATE,
     UNINIT_IMAGE_INVALID_STATE,
+    UNINIT_SAMPLER_INVALID_STATE,
     UNINIT_SHADER_INVALID_STATE,
     UNINIT_PIPELINE_INVALID_STATE,
     UNINIT_PASS_INVALID_STATE,
     FAIL_BUFFER_INVALID_STATE,
     FAIL_IMAGE_INVALID_STATE,
+    FAIL_SAMPLER_INVALID_STATE,
     FAIL_SHADER_INVALID_STATE,
     FAIL_PIPELINE_INVALID_STATE,
     FAIL_PASS_INVALID_STATE,
     BUFFER_POOL_EXHAUSTED,
     IMAGE_POOL_EXHAUSTED,
+    SAMPLER_POOL_EXHAUSTED,
     SHADER_POOL_EXHAUSTED,
     PIPELINE_POOL_EXHAUSTED,
     PASS_POOL_EXHAUSTED,
@@ -716,11 +765,17 @@ pub const LogItem = enum(i32) {
     VALIDATE_IMAGEDESC_NONRT_PIXELFORMAT,
     VALIDATE_IMAGEDESC_MSAA_BUT_NO_RT,
     VALIDATE_IMAGEDESC_NO_MSAA_RT_SUPPORT,
+    VALIDATE_IMAGEDESC_MSAA_NUM_MIPMAPS,
+    VALIDATE_IMAGEDESC_MSAA_3D_IMAGE,
+    VALIDATE_IMAGEDESC_DEPTH_3D_IMAGE,
     VALIDATE_IMAGEDESC_RT_IMMUTABLE,
     VALIDATE_IMAGEDESC_RT_NO_DATA,
     VALIDATE_IMAGEDESC_INJECTED_NO_DATA,
     VALIDATE_IMAGEDESC_DYNAMIC_NO_DATA,
     VALIDATE_IMAGEDESC_COMPRESSED_IMMUTABLE,
+    VALIDATE_SAMPLERDESC_CANARY,
+    VALIDATE_SAMPLERDESC_MINFILTER_NONE,
+    VALIDATE_SAMPLERDESC_MAGFILTER_NONE,
     VALIDATE_SHADERDESC_CANARY,
     VALIDATE_SHADERDESC_SOURCE,
     VALIDATE_SHADERDESC_BYTECODE,
@@ -733,19 +788,26 @@ pub const LogItem = enum(i32) {
     VALIDATE_SHADERDESC_UB_SIZE_MISMATCH,
     VALIDATE_SHADERDESC_UB_ARRAY_COUNT,
     VALIDATE_SHADERDESC_UB_STD140_ARRAY_TYPE,
-    VALIDATE_SHADERDESC_NO_CONT_IMGS,
-    VALIDATE_SHADERDESC_IMG_NAME,
-    VALIDATE_SHADERDESC_ATTR_NAMES,
+    VALIDATE_SHADERDESC_NO_CONT_IMAGES,
+    VALIDATE_SHADERDESC_NO_CONT_SAMPLERS,
+    VALIDATE_SHADERDESC_IMAGE_SAMPLER_PAIR_IMAGE_SLOT_OUT_OF_RANGE,
+    VALIDATE_SHADERDESC_IMAGE_SAMPLER_PAIR_SAMPLER_SLOT_OUT_OF_RANGE,
+    VALIDATE_SHADERDESC_IMAGE_SAMPLER_PAIR_NAME_REQUIRED_FOR_GL,
+    VALIDATE_SHADERDESC_IMAGE_SAMPLER_PAIR_HAS_NAME_BUT_NOT_USED,
+    VALIDATE_SHADERDESC_IMAGE_SAMPLER_PAIR_HAS_IMAGE_BUT_NOT_USED,
+    VALIDATE_SHADERDESC_IMAGE_SAMPLER_PAIR_HAS_SAMPLER_BUT_NOT_USED,
+    VALIDATE_SHADERDESC_IMAGE_NOT_REFERENCED_BY_IMAGE_SAMPLER_PAIRS,
+    VALIDATE_SHADERDESC_SAMPLER_NOT_REFERENCED_BY_IMAGE_SAMPLER_PAIRS,
+    VALIDATE_SHADERDESC_NO_CONT_IMAGE_SAMPLER_PAIRS,
     VALIDATE_SHADERDESC_ATTR_SEMANTICS,
     VALIDATE_SHADERDESC_ATTR_STRING_TOO_LONG,
     VALIDATE_PIPELINEDESC_CANARY,
     VALIDATE_PIPELINEDESC_SHADER,
     VALIDATE_PIPELINEDESC_NO_ATTRS,
     VALIDATE_PIPELINEDESC_LAYOUT_STRIDE4,
-    VALIDATE_PIPELINEDESC_ATTR_NAME,
     VALIDATE_PIPELINEDESC_ATTR_SEMANTICS,
     VALIDATE_PASSDESC_CANARY,
-    VALIDATE_PASSDESC_NO_COLOR_ATTS,
+    VALIDATE_PASSDESC_NO_ATTACHMENTS,
     VALIDATE_PASSDESC_NO_CONT_COLOR_ATTS,
     VALIDATE_PASSDESC_IMAGE,
     VALIDATE_PASSDESC_MIPLEVEL,
@@ -757,8 +819,28 @@ pub const LogItem = enum(i32) {
     VALIDATE_PASSDESC_DEPTH_INV_PIXELFORMAT,
     VALIDATE_PASSDESC_IMAGE_SIZES,
     VALIDATE_PASSDESC_IMAGE_SAMPLE_COUNTS,
+    VALIDATE_PASSDESC_RESOLVE_COLOR_IMAGE_MSAA,
+    VALIDATE_PASSDESC_RESOLVE_IMAGE,
+    VALIDATE_PASSDESC_RESOLVE_SAMPLE_COUNT,
+    VALIDATE_PASSDESC_RESOLVE_MIPLEVEL,
+    VALIDATE_PASSDESC_RESOLVE_FACE,
+    VALIDATE_PASSDESC_RESOLVE_LAYER,
+    VALIDATE_PASSDESC_RESOLVE_SLICE,
+    VALIDATE_PASSDESC_RESOLVE_IMAGE_NO_RT,
+    VALIDATE_PASSDESC_RESOLVE_IMAGE_SIZES,
+    VALIDATE_PASSDESC_RESOLVE_IMAGE_FORMAT,
+    VALIDATE_PASSDESC_DEPTH_IMAGE,
+    VALIDATE_PASSDESC_DEPTH_MIPLEVEL,
+    VALIDATE_PASSDESC_DEPTH_FACE,
+    VALIDATE_PASSDESC_DEPTH_LAYER,
+    VALIDATE_PASSDESC_DEPTH_SLICE,
+    VALIDATE_PASSDESC_DEPTH_IMAGE_NO_RT,
+    VALIDATE_PASSDESC_DEPTH_IMAGE_SIZES,
+    VALIDATE_PASSDESC_DEPTH_IMAGE_SAMPLE_COUNT,
     VALIDATE_BEGINPASS_PASS,
-    VALIDATE_BEGINPASS_IMAGE,
+    VALIDATE_BEGINPASS_COLOR_ATTACHMENT_IMAGE,
+    VALIDATE_BEGINPASS_RESOLVE_ATTACHMENT_IMAGE,
+    VALIDATE_BEGINPASS_DEPTHSTENCIL_ATTACHMENT_IMAGE,
     VALIDATE_APIP_PIPELINE_VALID_ID,
     VALIDATE_APIP_PIPELINE_EXISTS,
     VALIDATE_APIP_PIPELINE_VALID,
@@ -780,12 +862,28 @@ pub const LogItem = enum(i32) {
     VALIDATE_ABND_IB_EXISTS,
     VALIDATE_ABND_IB_TYPE,
     VALIDATE_ABND_IB_OVERFLOW,
-    VALIDATE_ABND_VS_IMGS,
+    VALIDATE_ABND_VS_EXPECTED_IMAGE_BINDING,
     VALIDATE_ABND_VS_IMG_EXISTS,
-    VALIDATE_ABND_VS_IMG_TYPES,
-    VALIDATE_ABND_FS_IMGS,
+    VALIDATE_ABND_VS_IMAGE_TYPE_MISMATCH,
+    VALIDATE_ABND_VS_IMAGE_MSAA,
+    VALIDATE_ABND_VS_UNEXPECTED_IMAGE_BINDING,
+    VALIDATE_ABND_VS_EXPECTED_SAMPLER_BINDING,
+    VALIDATE_ABND_VS_UNEXPECTED_SAMPLER_COMPARE_NEVER,
+    VALIDATE_ABND_VS_EXPECTED_SAMPLER_COMPARE_NEVER,
+    VALIDATE_ABND_VS_UNEXPECTED_SAMPLER_BINDING,
+    VALIDATE_ABND_VS_SMP_EXISTS,
+    VALIDATE_ABND_VS_IMG_SMP_MIPMAPS,
+    VALIDATE_ABND_FS_EXPECTED_IMAGE_BINDING,
     VALIDATE_ABND_FS_IMG_EXISTS,
-    VALIDATE_ABND_FS_IMG_TYPES,
+    VALIDATE_ABND_FS_IMAGE_TYPE_MISMATCH,
+    VALIDATE_ABND_FS_IMAGE_MSAA,
+    VALIDATE_ABND_FS_UNEXPECTED_IMAGE_BINDING,
+    VALIDATE_ABND_FS_EXPECTED_SAMPLER_BINDING,
+    VALIDATE_ABND_FS_UNEXPECTED_SAMPLER_COMPARE_NEVER,
+    VALIDATE_ABND_FS_EXPECTED_SAMPLER_COMPARE_NEVER,
+    VALIDATE_ABND_FS_UNEXPECTED_SAMPLER_BINDING,
+    VALIDATE_ABND_FS_SMP_EXISTS,
+    VALIDATE_ABND_FS_IMG_SMP_MIPMAPS,
     VALIDATE_AUB_NO_PIPELINE,
     VALIDATE_AUB_NO_UB_AT_SLOT,
     VALIDATE_AUB_SIZE,
@@ -800,74 +898,71 @@ pub const LogItem = enum(i32) {
     VALIDATE_UPDIMG_ONCE,
     VALIDATION_FAILED,
 };
-pub const GlContextDesc = extern struct {
-    force_gles2: bool = false,
-};
 pub const MetalContextDesc = extern struct {
     device: ?*const anyopaque = null,
-    renderpass_descriptor_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
-    renderpass_descriptor_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
-    drawable_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
-    drawable_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    renderpass_descriptor_cb: ?*const fn () callconv(.C) ?*const anyopaque = null,
+    renderpass_descriptor_userdata_cb: ?*const fn (?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    drawable_cb: ?*const fn () callconv(.C) ?*const anyopaque = null,
+    drawable_userdata_cb: ?*const fn (?*anyopaque) callconv(.C) ?*const anyopaque = null,
     user_data: ?*anyopaque = null,
 };
 pub const D3d11ContextDesc = extern struct {
     device: ?*const anyopaque = null,
     device_context: ?*const anyopaque = null,
-    render_target_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
-    render_target_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
-    depth_stencil_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
-    depth_stencil_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    render_target_view_cb: ?*const fn () callconv(.C) ?*const anyopaque = null,
+    render_target_view_userdata_cb: ?*const fn (?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_cb: ?*const fn () callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_userdata_cb: ?*const fn (?*anyopaque) callconv(.C) ?*const anyopaque = null,
     user_data: ?*anyopaque = null,
 };
 pub const WgpuContextDesc = extern struct {
     device: ?*const anyopaque = null,
-    render_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
-    render_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
-    resolve_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
-    resolve_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
-    depth_stencil_view_cb: ?*const fn() callconv(.C) ?*const anyopaque = null,
-    depth_stencil_view_userdata_cb: ?*const fn(?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    render_view_cb: ?*const fn () callconv(.C) ?*const anyopaque = null,
+    render_view_userdata_cb: ?*const fn (?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    resolve_view_cb: ?*const fn () callconv(.C) ?*const anyopaque = null,
+    resolve_view_userdata_cb: ?*const fn (?*anyopaque) callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_cb: ?*const fn () callconv(.C) ?*const anyopaque = null,
+    depth_stencil_view_userdata_cb: ?*const fn (?*anyopaque) callconv(.C) ?*const anyopaque = null,
     user_data: ?*anyopaque = null,
 };
 pub const ContextDesc = extern struct {
     color_format: i32 = 0,
     depth_format: i32 = 0,
     sample_count: i32 = 0,
-    gl: GlContextDesc = .{ },
-    metal: MetalContextDesc = .{ },
-    d3d11: D3d11ContextDesc = .{ },
-    wgpu: WgpuContextDesc = .{ },
+    metal: MetalContextDesc = .{},
+    d3d11: D3d11ContextDesc = .{},
+    wgpu: WgpuContextDesc = .{},
 };
 pub const CommitListener = extern struct {
-    func: ?*const fn(?*anyopaque) callconv(.C) void = null,
+    func: ?*const fn (?*anyopaque) callconv(.C) void = null,
     user_data: ?*anyopaque = null,
 };
 pub const Allocator = extern struct {
-    alloc: ?*const fn(usize, ?*anyopaque) callconv(.C) ?*anyopaque = null,
-    free: ?*const fn(?*anyopaque, ?*anyopaque) callconv(.C) void = null,
+    alloc: ?*const fn (usize, ?*anyopaque) callconv(.C) ?*anyopaque = null,
+    free: ?*const fn (?*anyopaque, ?*anyopaque) callconv(.C) void = null,
     user_data: ?*anyopaque = null,
 };
 pub const Logger = extern struct {
-    func: ?*const fn([*c]const u8, u32, u32, [*c]const u8, u32, [*c]const u8, ?*anyopaque) callconv(.C) void = null,
+    func: ?*const fn ([*c]const u8, u32, u32, [*c]const u8, u32, [*c]const u8, ?*anyopaque) callconv(.C) void = null,
     user_data: ?*anyopaque = null,
 };
 pub const Desc = extern struct {
     _start_canary: u32 = 0,
     buffer_pool_size: i32 = 0,
     image_pool_size: i32 = 0,
+    sampler_pool_size: i32 = 0,
     shader_pool_size: i32 = 0,
     pipeline_pool_size: i32 = 0,
     pass_pool_size: i32 = 0,
     context_pool_size: i32 = 0,
     uniform_buffer_size: i32 = 0,
     staging_buffer_size: i32 = 0,
-    sampler_cache_size: i32 = 0,
     max_commit_listeners: i32 = 0,
     disable_validation: bool = false,
-    allocator: Allocator = .{ },
-    logger: Logger = .{ },
-    context: ContextDesc = .{ },
+    mtl_force_managed_storage_mode: bool = false,
+    allocator: Allocator = .{},
+    logger: Logger = .{},
+    context: ContextDesc = .{},
     _end_canary: u32 = 0,
 };
 pub extern fn sg_setup([*c]const Desc) void;
@@ -888,7 +983,7 @@ pub fn resetStateCache() void {
 }
 pub extern fn sg_push_debug_group([*c]const u8) void;
 pub fn pushDebugGroup(name: [:0]const u8) void {
-    sg_push_debug_group(@ptrCast([*c]const u8,name));
+    sg_push_debug_group(@ptrCast(name));
 }
 pub extern fn sg_pop_debug_group() void;
 pub fn popDebugGroup() void {
@@ -910,6 +1005,10 @@ pub extern fn sg_make_image([*c]const ImageDesc) Image;
 pub fn makeImage(desc: ImageDesc) Image {
     return sg_make_image(&desc);
 }
+pub extern fn sg_make_sampler([*c]const SamplerDesc) Sampler;
+pub fn makeSampler(desc: SamplerDesc) Sampler {
+    return sg_make_sampler(&desc);
+}
 pub extern fn sg_make_shader([*c]const ShaderDesc) Shader;
 pub fn makeShader(desc: ShaderDesc) Shader {
     return sg_make_shader(&desc);
@@ -929,6 +1028,10 @@ pub fn destroyBuffer(buf: Buffer) void {
 pub extern fn sg_destroy_image(Image) void;
 pub fn destroyImage(img: Image) void {
     sg_destroy_image(img);
+}
+pub extern fn sg_destroy_sampler(Sampler) void;
+pub fn destroySampler(smp: Sampler) void {
+    sg_destroy_sampler(smp);
 }
 pub extern fn sg_destroy_shader(Shader) void;
 pub fn destroyShader(shd: Shader) void {
@@ -1042,6 +1145,10 @@ pub extern fn sg_query_image_state(Image) ResourceState;
 pub fn queryImageState(img: Image) ResourceState {
     return sg_query_image_state(img);
 }
+pub extern fn sg_query_sampler_state(Sampler) ResourceState;
+pub fn querySamplerState(smp: Sampler) ResourceState {
+    return sg_query_sampler_state(smp);
+}
 pub extern fn sg_query_shader_state(Shader) ResourceState;
 pub fn queryShaderState(shd: Shader) ResourceState {
     return sg_query_shader_state(shd);
@@ -1062,6 +1169,10 @@ pub extern fn sg_query_image_info(Image) ImageInfo;
 pub fn queryImageInfo(img: Image) ImageInfo {
     return sg_query_image_info(img);
 }
+pub extern fn sg_query_sampler_info(Sampler) SamplerInfo;
+pub fn querySamplerInfo(smp: Sampler) SamplerInfo {
+    return sg_query_sampler_info(smp);
+}
 pub extern fn sg_query_shader_info(Shader) ShaderInfo;
 pub fn queryShaderInfo(shd: Shader) ShaderInfo {
     return sg_query_shader_info(shd);
@@ -1074,6 +1185,30 @@ pub extern fn sg_query_pass_info(Pass) PassInfo;
 pub fn queryPassInfo(pass: Pass) PassInfo {
     return sg_query_pass_info(pass);
 }
+pub extern fn sg_query_buffer_desc(Buffer) BufferDesc;
+pub fn queryBufferDesc(buf: Buffer) BufferDesc {
+    return sg_query_buffer_desc(buf);
+}
+pub extern fn sg_query_image_desc(Image) ImageDesc;
+pub fn queryImageDesc(img: Image) ImageDesc {
+    return sg_query_image_desc(img);
+}
+pub extern fn sg_query_sampler_desc(Sampler) SamplerDesc;
+pub fn querySamplerDesc(smp: Sampler) SamplerDesc {
+    return sg_query_sampler_desc(smp);
+}
+pub extern fn sg_query_shader_desc(Shader) ShaderDesc;
+pub fn queryShaderDesc(shd: Shader) ShaderDesc {
+    return sg_query_shader_desc(shd);
+}
+pub extern fn sg_query_pipeline_desc(Pipeline) PipelineDesc;
+pub fn queryPipelineDesc(pip: Pipeline) PipelineDesc {
+    return sg_query_pipeline_desc(pip);
+}
+pub extern fn sg_query_pass_desc(Pass) PassDesc;
+pub fn queryPassDesc(pass: Pass) PassDesc {
+    return sg_query_pass_desc(pass);
+}
 pub extern fn sg_query_buffer_defaults([*c]const BufferDesc) BufferDesc;
 pub fn queryBufferDefaults(desc: BufferDesc) BufferDesc {
     return sg_query_buffer_defaults(&desc);
@@ -1081,6 +1216,10 @@ pub fn queryBufferDefaults(desc: BufferDesc) BufferDesc {
 pub extern fn sg_query_image_defaults([*c]const ImageDesc) ImageDesc;
 pub fn queryImageDefaults(desc: ImageDesc) ImageDesc {
     return sg_query_image_defaults(&desc);
+}
+pub extern fn sg_query_sampler_defaults([*c]const SamplerDesc) SamplerDesc;
+pub fn querySamplerDefaults(desc: SamplerDesc) SamplerDesc {
+    return sg_query_sampler_defaults(&desc);
 }
 pub extern fn sg_query_shader_defaults([*c]const ShaderDesc) ShaderDesc;
 pub fn queryShaderDefaults(desc: ShaderDesc) ShaderDesc {
@@ -1102,6 +1241,10 @@ pub extern fn sg_alloc_image() Image;
 pub fn allocImage() Image {
     return sg_alloc_image();
 }
+pub extern fn sg_alloc_sampler() Sampler;
+pub fn allocSampler() Sampler {
+    return sg_alloc_sampler();
+}
 pub extern fn sg_alloc_shader() Shader;
 pub fn allocShader() Shader {
     return sg_alloc_shader();
@@ -1121,6 +1264,10 @@ pub fn deallocBuffer(buf: Buffer) void {
 pub extern fn sg_dealloc_image(Image) void;
 pub fn deallocImage(img: Image) void {
     sg_dealloc_image(img);
+}
+pub extern fn sg_dealloc_sampler(Sampler) void;
+pub fn deallocSampler(smp: Sampler) void {
+    sg_dealloc_sampler(smp);
 }
 pub extern fn sg_dealloc_shader(Shader) void;
 pub fn deallocShader(shd: Shader) void {
@@ -1142,6 +1289,10 @@ pub extern fn sg_init_image(Image, [*c]const ImageDesc) void;
 pub fn initImage(img: Image, desc: ImageDesc) void {
     sg_init_image(img, &desc);
 }
+pub extern fn sg_init_sampler(Sampler, [*c]const SamplerDesc) void;
+pub fn initSampler(smg: Sampler, desc: SamplerDesc) void {
+    sg_init_sampler(smg, &desc);
+}
 pub extern fn sg_init_shader(Shader, [*c]const ShaderDesc) void;
 pub fn initShader(shd: Shader, desc: ShaderDesc) void {
     sg_init_shader(shd, &desc);
@@ -1162,6 +1313,10 @@ pub extern fn sg_uninit_image(Image) void;
 pub fn uninitImage(img: Image) void {
     sg_uninit_image(img);
 }
+pub extern fn sg_uninit_sampler(Sampler) void;
+pub fn uninitSampler(smp: Sampler) void {
+    sg_uninit_sampler(smp);
+}
 pub extern fn sg_uninit_shader(Shader) void;
 pub fn uninitShader(shd: Shader) void {
     sg_uninit_shader(shd);
@@ -1181,6 +1336,10 @@ pub fn failBuffer(buf: Buffer) void {
 pub extern fn sg_fail_image(Image) void;
 pub fn failImage(img: Image) void {
     sg_fail_image(img);
+}
+pub extern fn sg_fail_sampler(Sampler) void;
+pub fn failSampler(smp: Sampler) void {
+    sg_fail_sampler(smp);
 }
 pub extern fn sg_fail_shader(Shader) void;
 pub fn failShader(shd: Shader) void {

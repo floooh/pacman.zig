@@ -8,30 +8,28 @@ const builtin = @import("builtin");
 
 pub fn build(b: *Builder) void {
     const target = b.standardTargetOptions(.{});
-    const mode = b.standardReleaseOptions();
+    const optimize = b.standardOptimizeOption(.{});
     if (target.getCpu().arch != .wasm32) {
-        buildNative(b, target, mode) catch unreachable;
-    }
-    else {
-        buildWasm(b, target, mode) catch |err| {
-            std.log.err("{}", .{ err });
+        buildNative(b, target, optimize) catch unreachable;
+    } else {
+        buildWasm(b, target, optimize) catch |err| {
+            std.log.err("{}", .{err});
         };
     }
 }
 
 // this is the regular build for all native platforms
-fn buildNative(b: *Builder, target: CrossTarget, mode: Mode) !void {
-    const exe = b.addExecutable("pacman", "src/pacman.zig");
+fn buildNative(b: *Builder, target: CrossTarget, optimize: Mode) !void {
+    const exe = b.addExecutable(.{ .name = "pacman", .target = target, .optimize = optimize, .root_source_file = .{ .path = "src/pacman.zig" } });
     const cross_compiling_to_darwin = target.isDarwin() and (target.getOsTag() != builtin.os.tag);
-    exe.setTarget(target);
-    exe.setBuildMode(mode);
-    exe.addPackagePath("sokol", "src/sokol/sokol.zig");
-    exe.linkLibrary(libSokol(b, target, mode, cross_compiling_to_darwin, ""));
+    exe.addAnonymousModule("sokol", .{ .source_file = .{ .path = "src/sokol/sokol.zig" } });
+    exe.linkLibrary(libSokol(b, target, optimize, cross_compiling_to_darwin, ""));
     if (cross_compiling_to_darwin) {
         addDarwinCrossCompilePaths(b, exe);
     }
-    exe.install();
-    b.step("run", "Run pacman").dependOn(&exe.run().step);
+    b.installArtifact(exe);
+    const run = b.addRunArtifact(exe);
+    b.step("run", "Run pacman").dependOn(&run.step);
 
     // for iOS generate a valid app bundle directory structure
     if (target.getOsTag() == .ios) {
@@ -59,8 +57,7 @@ fn buildNative(b: *Builder, target: CrossTarget, mode: Mode) !void {
 //    calls an exported entry function "emsc_main()" in pacman.zig instead
 //    of the regular zig main function.
 //
-fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
-
+fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
     if (b.sysroot == null) {
         std.log.err("Please build with 'zig build -Dtarget=wasm32-emscripten --sysroot [path/to/emsdk]/upstream/emscripten/cache/sysroot", .{});
         return error.SysRootExpected;
@@ -73,25 +70,23 @@ fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
     defer b.allocator.free(emrun_path);
 
     // for some reason, the sysroot/include path must be provided separately
-    const include_path = try fs.path.join(b.allocator, &.{ b.sysroot.?, "include"});
+    const include_path = try fs.path.join(b.allocator, &.{ b.sysroot.?, "include" });
     defer b.allocator.free(include_path);
 
     // sokol must be built with wasm32-emscripten
     var wasm32_emscripten_target = target;
     wasm32_emscripten_target.os_tag = .emscripten;
-    const libsokol = libSokol(b, wasm32_emscripten_target, mode, false, "");
+    const libsokol = libSokol(b, wasm32_emscripten_target, optimize, false, "");
     libsokol.defineCMacro("__EMSCRIPTEN__", "1");
     libsokol.addIncludePath(include_path);
-    libsokol.install();
+    const install_libsokol = b.addInstallArtifact(libsokol);
 
     // the game code must be build as library with wasm32-freestanding
     var wasm32_freestanding_target = target;
     wasm32_freestanding_target.os_tag = .freestanding;
-    const libgame = b.addStaticLibrary("game", "src/pacman.zig");
-    libgame.setTarget(wasm32_freestanding_target);
-    libgame.setBuildMode(mode);
-    libgame.addPackagePath("sokol", "src/sokol/sokol.zig");
-    libgame.install();
+    const libgame = b.addStaticLibrary(.{ .name = "game", .target = target, .optimize = optimize, .root_source_file = .{ .path = "src/pacman.zig" } });
+    libgame.addAnonymousModule("sokol", .{ .source_file = .{ .path = "src/sokol/sokol.zig" } });
+    const install_libgame = b.addInstallArtifact(libgame);
 
     // call the emcc linker step as a 'system command' zig build step which
     // depends on the libsokol and libgame build steps
@@ -99,10 +94,12 @@ fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
     const emcc = b.addSystemCommand(&.{
         emcc_path,
         "-Os",
-        "--closure", "1",
+        "--closure",
+        "1",
         "src/emscripten/entry.c",
         "-ozig-out/web/pacman.html",
-        "--shell-file", "src/emscripten/shell.html",
+        "--shell-file",
+        "src/emscripten/shell.html",
         "-Lzig-out/lib/",
         "-lgame",
         "-lsokol",
@@ -111,8 +108,8 @@ fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
         "-sASSERTIONS=0",
         "-sEXPORTED_FUNCTIONS=['_malloc','_free','_main']",
     });
-    emcc.step.dependOn(&libsokol.install_step.?.step);
-    emcc.step.dependOn(&libgame.install_step.?.step);
+    emcc.step.dependOn(&install_libsokol.step);
+    emcc.step.dependOn(&install_libgame.step);
 
     // get the emcc step to run on 'zig build'
     b.getInstallStep().dependOn(&emcc.step);
@@ -123,14 +120,17 @@ fn buildWasm(b: *Builder, target: CrossTarget, mode: Mode) !void {
     b.step("run", "Run pacman").dependOn(&emrun.step);
 }
 
-fn libSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *LibExeObjStep {
-    const lib = b.addStaticLibrary("sokol", null);
-    lib.setTarget(target);
-    lib.setBuildMode(mode);
+fn libSokol(b: *Builder, target: CrossTarget, optimize: Mode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *LibExeObjStep {
+    const lib = b.addStaticLibrary(.{
+        .name = "sokol",
+        .target = target,
+        .optimize = optimize,
+    });
+
     lib.linkLibC();
     const sokol_path = prefix_path ++ "src/sokol/sokol.c";
     if (lib.target.isDarwin()) {
-        lib.addCSourceFile(sokol_path, &.{ "-ObjC" });
+        lib.addCSourceFile(sokol_path, &.{"-ObjC"});
         lib.linkFramework("MetalKit");
         lib.linkFramework("Metal");
         lib.linkFramework("AudioToolbox");
@@ -138,13 +138,11 @@ fn libSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_dar
             lib.linkFramework("UIKit");
             lib.linkFramework("AVFoundation");
             lib.linkFramework("Foundation");
-        }
-        else {
+        } else {
             lib.linkFramework("Cocoa");
             lib.linkFramework("QuartzCore");
         }
-    }
-    else {
+    } else {
         lib.addCSourceFile(sokol_path, &.{});
         if (lib.target.isLinux()) {
             lib.linkSystemLibrary("X11");
@@ -152,8 +150,7 @@ fn libSokol(b: *Builder, target: CrossTarget, mode: Mode, cross_compiling_to_dar
             lib.linkSystemLibrary("Xcursor");
             lib.linkSystemLibrary("GL");
             lib.linkSystemLibrary("asound");
-        }
-        else if (lib.target.isWindows()) {
+        } else if (lib.target.isWindows()) {
             lib.linkSystemLibrary("kernel32");
             lib.linkSystemLibrary("user32");
             lib.linkSystemLibrary("gdi32");

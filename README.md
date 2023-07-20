@@ -10,7 +10,7 @@ Zig bindings for the sokol headers are here: https://github.com/floooh/sokol-zig
 
 ## Build and Run
 
-Requires Zig version 0.10.0 (for the Zig dev version, check out the branch zig-0.11.0).
+Requires Zig version 0.11.0-dev
 
 Zig installation: https://github.com/ziglang/zig/wiki/Install-Zig-from-a-Package-Manager
 
@@ -60,6 +60,8 @@ zig build --sysroot $(xcrun --sdk iphoneos --show-sdk-path) -Dtarget=aarch64-ios
 ```
 
 ## Experimental web support
+
+NOTE: this appears to be broken at the moment
 
 Building the project to run in web browsers requires the Emscripten SDK to provide
 a sysroot and linker:
