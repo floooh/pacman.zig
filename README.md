@@ -10,7 +10,7 @@ Zig bindings for the sokol headers are here: https://github.com/floooh/sokol-zig
 
 ## Build and Run
 
-Requires Zig version 0.11.0-dev
+Requires Zig version 0.11.0
 
 Zig installation: https://github.com/ziglang/zig/wiki/Install-Zig-from-a-Package-Manager
 
@@ -27,9 +27,11 @@ On Linux, you need to install the usual dev-packages for GL-, X11- and ALSA-deve
 
 ## Experimental iOS support
 
-NOTE: this is mostly a "it technically works" demo, the game can't be played with
-touch inputs yet, only tapping is detected to get from the intro screen into
-the game loop.
+> NOTE: these instructions currently don't work in zig-0.11.0
+
+> NOTE: this is mostly a "it technically works" demo, the game can't be played with
+> touch inputs yet, only tapping is detected to get from the intro screen into
+> the game loop.
 
 Since building for iOS is a cross-compilation-scenario, Xcode must be installed to
 provide the iOS platform SDKs.
@@ -61,7 +63,7 @@ zig build --sysroot $(xcrun --sdk iphoneos --show-sdk-path) -Dtarget=aarch64-ios
 
 ## Experimental web support
 
-NOTE: this appears to be broken at the moment
+> NOTE: these instruction currently don't work with zig-0.11.0
 
 Building the project to run in web browsers requires the Emscripten SDK to provide
 a sysroot and linker:
@@ -78,7 +80,7 @@ cd emsdk
 cd ..
 
 # build for wasm32-emscripten
-zig build -Drelease-small -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
+zig build -Doptimize=ReleaseSmall -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
 ```
 
 The resulting .html, .js and .wasm files are under ```zig-out/web```.
@@ -88,7 +90,7 @@ uses the Emscripten SDK ```emrun``` tool to start a local webserver and the brow
 Note that you need to hit ```Ctrl-C``` to exit after closing the browser:
 
 ```bash
-zig build run -Drelease-small -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
+zig build run -Doptimize=ReleaseSmall -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
 ```
 
 Note that the Emscripten build currently requires a couple of hacks and workarounds in

@@ -83,8 +83,8 @@ fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
     wasm32_emscripten_target.os_tag = .emscripten;
     const libsokol = libSokol(b, wasm32_emscripten_target, optimize, false, "");
     libsokol.defineCMacro("__EMSCRIPTEN__", "1");
-    libsokol.addIncludePath(include_path);
-    const install_libsokol = b.addInstallArtifact(libsokol);
+    libsokol.addIncludePath(.{ .path = include_path });
+    const install_libsokol = b.addInstallArtifact(libsokol, .{});
 
     // the game code must be build as library with wasm32-freestanding
     var wasm32_freestanding_target = target;
@@ -96,7 +96,7 @@ fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
         .root_source_file = .{ .path = "src/pacman.zig" },
     });
     libgame.addAnonymousModule("sokol", .{ .source_file = .{ .path = "src/sokol/sokol.zig" } });
-    const install_libgame = b.addInstallArtifact(libgame);
+    const install_libgame = b.addInstallArtifact(libgame, .{});
 
     // call the emcc linker step as a 'system command' zig build step which
     // depends on the libsokol and libgame build steps
@@ -140,7 +140,10 @@ fn libSokol(b: *Builder, target: CrossTarget, optimize: Mode, cross_compiling_to
     lib.linkLibC();
     const sokol_path = prefix_path ++ "src/sokol/sokol.c";
     if (lib.target.isDarwin()) {
-        lib.addCSourceFile(sokol_path, &.{"-ObjC"});
+        lib.addCSourceFile(.{
+            .file = .{ .path = sokol_path },
+            .flags = &.{"-ObjC"},
+        });
         lib.linkFramework("MetalKit");
         lib.linkFramework("Metal");
         lib.linkFramework("AudioToolbox");
@@ -153,7 +156,10 @@ fn libSokol(b: *Builder, target: CrossTarget, optimize: Mode, cross_compiling_to
             lib.linkFramework("QuartzCore");
         }
     } else {
-        lib.addCSourceFile(sokol_path, &.{});
+        lib.addCSourceFile(.{
+            .file = .{ .path = sokol_path },
+            .flags = &.{},
+        });
         if (lib.target.isLinux()) {
             lib.linkSystemLibrary("X11");
             lib.linkSystemLibrary("Xi");
@@ -178,9 +184,9 @@ fn libSokol(b: *Builder, target: CrossTarget, optimize: Mode, cross_compiling_to
 
 fn addDarwinCrossCompilePaths(b: *Builder, step: *LibExeObjStep) void {
     checkDarwinSysRoot(b);
-    step.addLibraryPath("/usr/lib");
-    step.addSystemIncludePath("/usr/include");
-    step.addFrameworkPath("/System/Library/Frameworks");
+    step.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+    step.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
+    step.addFrameworkPath(.{ .cwd_relative = "/System/Library/Frameworks" });
 }
 
 fn checkDarwinSysRoot(b: *Builder) void {
