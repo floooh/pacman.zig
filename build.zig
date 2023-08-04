@@ -1,7 +1,7 @@
 const std = @import("std");
 const fs = std.fs;
 const Builder = std.build.Builder;
-const LibExeObjStep = std.build.LibExeObjStep;
+const CompileStep = std.build.CompileStep;
 const CrossTarget = std.zig.CrossTarget;
 const Mode = std.builtin.Mode;
 const builtin = @import("builtin");
@@ -130,7 +130,7 @@ fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
     b.step("run", "Run pacman").dependOn(&emrun.step);
 }
 
-fn libSokol(b: *Builder, target: CrossTarget, optimize: Mode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *LibExeObjStep {
+fn libSokol(b: *Builder, target: CrossTarget, optimize: Mode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *CompileStep {
     const lib = b.addStaticLibrary(.{
         .name = "sokol",
         .target = target,
@@ -182,7 +182,7 @@ fn libSokol(b: *Builder, target: CrossTarget, optimize: Mode, cross_compiling_to
     return lib;
 }
 
-fn addDarwinCrossCompilePaths(b: *Builder, step: *LibExeObjStep) void {
+fn addDarwinCrossCompilePaths(b: *Builder, step: *CompileStep) void {
     checkDarwinSysRoot(b);
     step.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
     step.addSystemIncludePath(.{ .cwd_relative = "/usr/include" });
