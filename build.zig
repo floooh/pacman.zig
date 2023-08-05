@@ -52,11 +52,11 @@ fn buildNative(b: *Builder, target: CrossTarget, optimize: Mode) !void {
 //    file, setting up the web API shims, etc...)
 //  - the Sokol C headers must be compiled as target wasm32-emscripten, otherwise
 //    the EMSCRIPTEN_KEEPALIVE and EM_JS macro magic doesn't work
+//  - the Zig code must be compiled with target wasm32-freestanding
+//    (see https://github.com/ziglang/zig/issues/10836)
 //  - an additional header search path into Emscripten's sysroot
 //    must be set so that the C code compiled with Zig finds the Emscripten
 //    sysroot headers
-//  - the Zig code must *not* be compiled with wasm32-emscripten, because parts
-//    of the Zig stdlib doesn't compile, so instead use wasm32-freestanding
 //  - the game code in pacman.zig is compiled into a library, and a
 //    C file (src/emscripten/entry.c) is used as entry point, which then
 //    calls an exported entry function "emsc_main()" in pacman.zig instead
@@ -64,8 +64,12 @@ fn buildNative(b: *Builder, target: CrossTarget, optimize: Mode) !void {
 //
 fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
     if (b.sysroot == null) {
-        std.log.err("Please build with 'zig build -Dtarget=wasm32-emscripten --sysroot [path/to/emsdk]/upstream/emscripten/cache/sysroot", .{});
+        std.log.err("Please build with 'zig build -Dtarget=wasm32-freestanding --sysroot [path/to/emsdk]/upstream/emscripten/cache/sysroot", .{});
         return error.SysRootExpected;
+    }
+    if (target.os_tag != .freestanding) {
+        std.log.err("Please build with 'zig build -Dtarget=wasm32-freestanding --sysroot [path/to/emsdk]/upstream/emscripten/cache/sysroot", .{});
+        return error.Wasm32FreestandingExpected;
     }
 
     // derive the emcc and emrun paths from the provided sysroot:
@@ -74,11 +78,11 @@ fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
     const emrun_path = try fs.path.join(b.allocator, &.{ b.sysroot.?, "../../emrun" });
     defer b.allocator.free(emrun_path);
 
-    // for some reason, the sysroot/include path must be provided separately
+    // the sysroot/include path must be provided separately for the C compilation step
     const include_path = try fs.path.join(b.allocator, &.{ b.sysroot.?, "include" });
     defer b.allocator.free(include_path);
 
-    // sokol must be built with wasm32-emscripten
+    // sokol must be built with wasm32-emscripten so that the EM_JS magic works
     var wasm32_emscripten_target = target;
     wasm32_emscripten_target.os_tag = .emscripten;
     const libsokol = libSokol(b, wasm32_emscripten_target, optimize, false, "");
@@ -86,9 +90,7 @@ fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
     libsokol.addIncludePath(.{ .path = include_path });
     const install_libsokol = b.addInstallArtifact(libsokol, .{});
 
-    // the game code must be build as library with wasm32-freestanding
-    var wasm32_freestanding_target = target;
-    wasm32_freestanding_target.os_tag = .freestanding;
+    // the game code can be compiled either with wasm32-freestanding or wasm32-emscripten
     const libgame = b.addStaticLibrary(.{
         .name = "game",
         .target = target,
@@ -116,6 +118,7 @@ fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
         "-sNO_FILESYSTEM=1",
         "-sMALLOC='emmalloc'",
         "-sASSERTIONS=0",
+        "-sUSE_WEBGL2=1",
         "-sEXPORTED_FUNCTIONS=['_malloc','_free','_main']",
     });
     emcc.step.dependOn(&install_libsokol.step);

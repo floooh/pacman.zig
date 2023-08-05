@@ -25,6 +25,40 @@ on macOS through Metal.
 
 On Linux, you need to install the usual dev-packages for GL-, X11- and ALSA-development.
 
+## Experimental web support
+
+Building the project to run in web browsers requires the Emscripten SDK to provide
+a sysroot and linker:
+
+```bash
+git clone https://github.com/floooh/pacman.zig
+cd pacman.zig
+
+# install emsdk into a subdirectory
+git clone https://github.com/emscripten-core/emsdk.git
+cd emsdk
+./emsdk install latest
+./emsdk activate latest
+cd ..
+
+# build for wasm32-emscripten
+zig build -Doptimize=ReleaseSmall -Dtarget=wasm32-freestanding --sysroot emsdk/upstream/emscripten/cache/sysroot
+```
+
+The resulting .html, .js and .wasm files are under ```zig-out/web```.
+
+...to build and start the result in a browser, add a 'run' argument to 'zig build', this
+uses the Emscripten SDK ```emrun``` tool to start a local webserver and the browser.
+Note that you need to hit ```Ctrl-C``` to exit after closing the browser:
+
+```bash
+zig build run -Doptimize=ReleaseSmall -Dtarget=wasm32-freestanding --sysroot emsdk/upstream/emscripten/cache/sysroot
+```
+
+Note that the Emscripten build currently requires a couple of hacks and workarounds in
+the build process, details are in the build.zig file.
+
+
 ## Experimental iOS support
 
 > NOTE: these instructions currently don't work in zig-0.11.0
@@ -60,38 +94,3 @@ git clone https://github.com/floooh/pacman.zig
 cd pacman.zig
 zig build --sysroot $(xcrun --sdk iphoneos --show-sdk-path) -Dtarget=aarch64-ios
 ```
-
-## Experimental web support
-
-> NOTE: these instruction currently don't work with zig-0.11.0
-
-Building the project to run in web browsers requires the Emscripten SDK to provide
-a sysroot and linker:
-
-```bash
-git clone https://github.com/floooh/pacman.zig
-cd pacman.zig
-
-# install emsdk into a subdirectory
-git clone https://github.com/emscripten-core/emsdk.git
-cd emsdk
-./emsdk install 3.1.20
-./emsdk activate 3.1.20
-cd ..
-
-# build for wasm32-emscripten
-zig build -Doptimize=ReleaseSmall -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
-```
-
-The resulting .html, .js and .wasm files are under ```zig-out/web```.
-
-...to build and start the result in a browser, add a 'run' argument to 'zig build', this
-uses the Emscripten SDK ```emrun``` tool to start a local webserver and the browser.
-Note that you need to hit ```Ctrl-C``` to exit after closing the browser:
-
-```bash
-zig build run -Doptimize=ReleaseSmall -Dtarget=wasm32-emscripten --sysroot emsdk/upstream/emscripten/cache/sysroot
-```
-
-Note that the Emscripten build currently requires a couple of hacks and workarounds in
-the build process, details are in the build.zig file.
