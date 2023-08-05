@@ -53,14 +53,6 @@ fn buildNative(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     b.step("run", "Run pacman").dependOn(&run.step);
-
-    // for iOS generate a valid app bundle directory structure
-    if (target.getOsTag() == .ios) {
-        const install_path = try fs.path.join(b.allocator, &.{ b.install_path, "bin", "pacman" });
-        defer b.allocator.free(install_path);
-        b.installFile(install_path, "bin/Pacman.app/pacman");
-        b.installFile("src/ios/Info.plist", "bin/Pacman.app/Info.plist");
-    }
 }
 
 // building for WASM/HTML5 requires a couple of hacks and workarounds:
