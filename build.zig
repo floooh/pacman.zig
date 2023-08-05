@@ -10,7 +10,7 @@ const builtin = @import("builtin");
 // NOTE: the sokol dependency consists of two parts:
 //
 // - a regular Zig module with the bindings interface
-// - a C library with the
+// - a static link library with the compiled C code
 //
 // I didn't find a solution to treat the C library dependency
 // as an 'install artifact' (there doesn't seem to be a way to
