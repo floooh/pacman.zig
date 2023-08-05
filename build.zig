@@ -3,7 +3,7 @@ const fs = std.fs;
 const Builder = std.build.Builder;
 const CompileStep = std.build.CompileStep;
 const CrossTarget = std.zig.CrossTarget;
-const Mode = std.builtin.Mode;
+const OptimizeMode = std.builtin.OptimizeMode;
 const builtin = @import("builtin");
 
 pub fn build(b: *Builder) void {
@@ -19,7 +19,7 @@ pub fn build(b: *Builder) void {
 }
 
 // this is the regular build for all native platforms
-fn buildNative(b: *Builder, target: CrossTarget, optimize: Mode) !void {
+fn buildNative(b: *Builder, target: CrossTarget, optimize: OptimizeMode) !void {
     const exe = b.addExecutable(.{
         .name = "pacman",
         .target = target,
@@ -62,7 +62,7 @@ fn buildNative(b: *Builder, target: CrossTarget, optimize: Mode) !void {
 //    calls an exported entry function "emsc_main()" in pacman.zig instead
 //    of the regular zig main function.
 //
-fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
+fn buildWasm(b: *Builder, target: CrossTarget, optimize: OptimizeMode) !void {
     if (b.sysroot == null) {
         std.log.err("Please build with 'zig build -Dtarget=wasm32-freestanding --sysroot [path/to/emsdk]/upstream/emscripten/cache/sysroot", .{});
         return error.SysRootExpected;
@@ -133,7 +133,7 @@ fn buildWasm(b: *Builder, target: CrossTarget, optimize: Mode) !void {
     b.step("run", "Run pacman").dependOn(&emrun.step);
 }
 
-fn libSokol(b: *Builder, target: CrossTarget, optimize: Mode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *CompileStep {
+fn libSokol(b: *Builder, target: CrossTarget, optimize: OptimizeMode, cross_compiling_to_darwin: bool, comptime prefix_path: []const u8) *CompileStep {
     const lib = b.addStaticLibrary(.{
         .name = "sokol",
         .target = target,
