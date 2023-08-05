@@ -60,13 +60,17 @@ fn buildNative(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol
 //  - emcc must be used as linker instead of the zig linker to implement
 //    the additional "Emscripten magic" (e.g. generating the .html and .js
 //    file, setting up the web API shims, etc...)
-//  - the Sokol C headers must be compiled as target wasm32-emscripten, otherwise
-//    the EMSCRIPTEN_KEEPALIVE and EM_JS macro magic doesn't work
-//  - the Zig code must be compiled with target wasm32-freestanding
-//    (see https://github.com/ziglang/zig/issues/10836)
 //  - an additional header search path into Emscripten's sysroot
 //    must be set so that the C code compiled with Zig finds the Emscripten
-//    sysroot headers
+//    sysroot headers (note: the build.zig in the sokol-zig bindings
+//    takes care of this when calling buildLibSokol() with a .wasm32
+//    target and a sysroot)
+//  - the Sokol C headers must be compiled as target wasm32-emscripten, otherwise
+//    the EMSCRIPTEN_KEEPALIVE and EM_JS macro magic doesn't work
+//    (note: the build.zig in the sokol-zig bindings takes care of this
+//    special case when calling buildLibSokol() with any .wasm32 target)
+//  - the Zig code must be compiled with target wasm32-freestanding
+//    (see https://github.com/ziglang/zig/issues/10836)
 //  - the game code in pacman.zig is compiled into a library, and a
 //    C file (src/emscripten/entry.c) is used as entry point, which then
 //    calls an exported entry function "emsc_main()" in pacman.zig instead
