@@ -87,6 +87,7 @@ fn buildWasm(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol: 
     }
 
     const libsokol = try sokol.buildLibSokol(b, .{
+        .build_root = dep_sokol.builder.build_root.path,
         .sysroot = b.sysroot,
         .target = target,
         .optimize = optimize,

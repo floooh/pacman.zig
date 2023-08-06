@@ -2,9 +2,6 @@
     .name = "pacman",
     .version = "0.1.0",
     .dependencies = .{
-        .sokol = .{
-            .url = "https://github.com/floooh/sokol-zig/archive/561fe5e2a9a99055a0a56e2f68e4da20332e60b3.tar.gz",
-            .hash = "12208c836e87ec59c04b8437e80a07ce6007348bbf2c347a9dcbcf9267dd70446eee",
-        },
+        .sokol = .{ .url = "https://github.com/floooh/sokol-zig/archive/16e78f8aafff61eab7c36da795d258bb466b5d20.tar.gz", .hash = "12209cb83151ead50b7bd65068bfabc7962b19beaa74e365b67c61b1e9c5c3917310" },
     },
 }
