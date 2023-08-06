@@ -26,6 +26,13 @@ pub fn build(b: *Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const dep_sokol = b.dependency("sokol", .{});
+
+    // hack: patch dependency sysroot into an absolute path
+    if (dep_sokol.builder.sysroot) |sysroot| {
+        const abs_sysroot = fs.cwd().realpathAlloc(b.allocator, sysroot) catch unreachable;
+        dep_sokol.builder.sysroot = abs_sysroot;
+    }
+
     if (target.getCpu().arch != .wasm32) {
         buildNative(b, target, optimize, dep_sokol) catch unreachable;
     } else {
@@ -44,8 +51,7 @@ fn buildNative(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol
         .root_source_file = .{ .path = "src/pacman.zig" },
     });
     exe.addModule("sokol", dep_sokol.module("sokol"));
-    const lib_sokol = try sokol.buildLibSokol(b, .{
-        .build_root = dep_sokol.builder.build_root.path,
+    const lib_sokol = try sokol.buildLibSokol(dep_sokol.builder, .{
         .target = target,
         .optimize = optimize,
     });
@@ -64,7 +70,7 @@ fn buildNative(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol
 //    must be set so that the C code compiled with Zig finds the Emscripten
 //    sysroot headers (note: the build.zig in the sokol-zig bindings
 //    takes care of this when calling buildLibSokol() with a .wasm32
-//    target and a sysroot)
+//    target)
 //  - the Sokol C headers must be compiled as target wasm32-emscripten, otherwise
 //    the EMSCRIPTEN_KEEPALIVE and EM_JS macro magic doesn't work
 //    (note: the build.zig in the sokol-zig bindings takes care of this
@@ -86,9 +92,7 @@ fn buildWasm(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol: 
         return error.Wasm32FreestandingExpected;
     }
 
-    const libsokol = try sokol.buildLibSokol(b, .{
-        .build_root = dep_sokol.builder.build_root.path,
-        .sysroot = b.sysroot,
+    const libsokol = try sokol.buildLibSokol(dep_sokol.builder, .{
         .target = target,
         .optimize = optimize,
     });
