@@ -6,13 +6,12 @@ const Dependency = std.build.Dependency;
 const CrossTarget = std.zig.CrossTarget;
 const OptimizeMode = std.builtin.OptimizeMode;
 
-pub fn build(b: *Build) void {
+pub fn build(b: *Build) !void {
 
     // hack: patch the sysroot into an absolute path, otherwise the relative sysroot path
     // would break down in the dependencies
     if (b.sysroot) |sysroot| {
-        const abs_sysroot = fs.cwd().realpathAlloc(b.allocator, sysroot) catch unreachable;
-        b.sysroot = abs_sysroot;
+        b.sysroot = try fs.cwd().realpathAlloc(b.allocator, sysroot);
     }
 
     const target = b.standardTargetOptions(.{});
@@ -27,11 +26,9 @@ pub fn build(b: *Build) void {
 
     // special case handling for native vs web build
     if (target.getCpu().arch != .wasm32) {
-        buildNative(b, target, optimize, dep_sokol) catch unreachable;
+        try buildNative(b, target, optimize, dep_sokol);
     } else {
-        buildWasm(b, target, optimize, dep_sokol) catch |err| {
-            std.log.err("{}", .{err});
-        };
+        try buildWasm(b, target, optimize, dep_sokol);
     }
 }
 
