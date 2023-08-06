@@ -5,34 +5,27 @@ const CompileStep = std.build.Step.Compile;
 const Dependency = std.build.Dependency;
 const CrossTarget = std.zig.CrossTarget;
 const OptimizeMode = std.builtin.OptimizeMode;
-const builtin = @import("builtin");
-
-// NOTE: the sokol dependency consists of two parts:
-//
-// - a regular Zig module with the bindings interface
-// - a static link library with the compiled C code
-//
-// I didn't find a solution to treat the C library dependency
-// as an 'install artifact' (there doesn't seem to be a way to
-// communicate a custom sysroot to the dependency build process).
-//
-// That's why the C library is configured by directly calling a function
-// 'buildLibSokol()' in the sokol-dependency build.zig, which is
-// imported via @import("sokol").
-//
-const sokol = @import("sokol");
 
 pub fn build(b: *Build) void {
-    const target = b.standardTargetOptions(.{});
-    const optimize = b.standardOptimizeOption(.{});
-    const dep_sokol = b.dependency("sokol", .{});
 
-    // hack: patch dependency sysroot into an absolute path
-    if (dep_sokol.builder.sysroot) |sysroot| {
+    // hack: patch the sysroot into an absolute path, otherwise the relative sysroot path
+    // would break down in the dependencies
+    if (b.sysroot) |sysroot| {
         const abs_sysroot = fs.cwd().realpathAlloc(b.allocator, sysroot) catch unreachable;
-        dep_sokol.builder.sysroot = abs_sysroot;
+        b.sysroot = abs_sysroot;
     }
 
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+
+    // get the sokol bindings package dependency, important: need to communicate the
+    // CrossTarget and OptimizeMode here, otherwise cross-compilation won't work
+    const dep_sokol = b.dependency("sokol", .{
+        .target = target,
+        .optimize = optimize,
+    });
+
+    // special case handling for native vs web build
     if (target.getCpu().arch != .wasm32) {
         buildNative(b, target, optimize, dep_sokol) catch unreachable;
     } else {
@@ -42,7 +35,7 @@ pub fn build(b: *Build) void {
     }
 }
 
-// this is the regular build for all native platforms
+// this is the regular build for all native platforms, nothing surprising here
 fn buildNative(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol: *Dependency) !void {
     const exe = b.addExecutable(.{
         .name = "pacman",
@@ -51,11 +44,7 @@ fn buildNative(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol
         .root_source_file = .{ .path = "src/pacman.zig" },
     });
     exe.addModule("sokol", dep_sokol.module("sokol"));
-    const lib_sokol = try sokol.buildLibSokol(dep_sokol.builder, .{
-        .target = target,
-        .optimize = optimize,
-    });
-    exe.linkLibrary(lib_sokol);
+    exe.linkLibrary(dep_sokol.artifact("sokol"));
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     b.step("run", "Run pacman").dependOn(&run.step);
@@ -68,13 +57,10 @@ fn buildNative(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol
 //    file, setting up the web API shims, etc...)
 //  - an additional header search path into Emscripten's sysroot
 //    must be set so that the C code compiled with Zig finds the Emscripten
-//    sysroot headers (note: the build.zig in the sokol-zig bindings
-//    takes care of this when calling buildLibSokol() with a .wasm32
-//    target)
+//    sysroot headers (this is taken care of now in the sokol-zig package build.zig)
 //  - the Sokol C headers must be compiled as target wasm32-emscripten, otherwise
 //    the EMSCRIPTEN_KEEPALIVE and EM_JS macro magic doesn't work
-//    (note: the build.zig in the sokol-zig bindings takes care of this
-//    special case when calling buildLibSokol() with any .wasm32 target)
+//    (this is also taken care of now in the sokol-zig package)
 //  - the Zig code must be compiled with target wasm32-freestanding
 //    (see https://github.com/ziglang/zig/issues/10836)
 //  - the game code in pacman.zig is compiled into a library, and a
@@ -87,17 +73,12 @@ fn buildWasm(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol: 
         std.log.err("Please build with 'zig build -Dtarget=wasm32-freestanding --sysroot [path/to/emsdk]/upstream/emscripten/cache/sysroot", .{});
         return error.SysRootExpected;
     }
+    // see: https://github.com/ziglang/zig/issues/10836#issuecomment-1666488896
     if (target.os_tag != .freestanding) {
         std.log.err("Please build with 'zig build -Dtarget=wasm32-freestanding --sysroot [path/to/emsdk]/upstream/emscripten/cache/sysroot", .{});
         return error.Wasm32FreestandingExpected;
     }
 
-    const libsokol = try sokol.buildLibSokol(dep_sokol.builder, .{
-        .target = target,
-        .optimize = optimize,
-    });
-
-    // the game code can be compiled either with wasm32-freestanding or wasm32-emscripten
     const libgame = b.addStaticLibrary(.{
         .name = "game",
         .target = target,
@@ -106,7 +87,7 @@ fn buildWasm(b: *Build, target: CrossTarget, optimize: OptimizeMode, dep_sokol: 
     });
     libgame.addModule("sokol", dep_sokol.module("sokol"));
     const install_libgame = b.addInstallArtifact(libgame, .{});
-    const install_libsokol = b.addInstallArtifact(libsokol, .{});
+    const install_libsokol = b.addInstallArtifact(dep_sokol.artifact("sokol"), .{});
 
     // call the emcc linker step as a 'system command' zig build step which
     // depends on the libsokol and libgame build steps

@@ -3,8 +3,8 @@
     .version = "0.1.0",
     .dependencies = .{
         .sokol = .{
-            .url = "https://github.com/floooh/sokol-zig/archive/78b2720d5952749c9a615faf69f6e511133a087e.tar.gz",
-            .hash = "122099bc32f2afcb07cde63f93cef09de0bc8eab828244dfe4c1e220ce11032f3ea8",
+            .url = "https://github.com/floooh/sokol-zig/archive/24a47f10231e45875452a110aacb78aa1a8e9648.tar.gz",
+            .hash = "12203a48f18157ad05f2bfe81e346d78b807b52184234a4ad62bb01eab4ac31f91ba",
         },
     },
 }
