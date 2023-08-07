@@ -41,7 +41,7 @@ cd emsdk
 ./emsdk activate latest
 cd ..
 
-# build for wasm32-emscripten
+# build for wasm32-freestanding
 zig build -Doptimize=ReleaseSmall -Dtarget=wasm32-freestanding --sysroot emsdk/upstream/emscripten/cache/sysroot
 ```
 
