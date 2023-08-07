@@ -2346,8 +2346,9 @@ fn gfxCreateResources() void {
         shd_desc.fs.images[0] = .{ .used = true };
         shd_desc.fs.images[1] = .{ .used = true };
         shd_desc.fs.samplers[0] = .{ .used = true };
+        shd_desc.fs.samplers[1] = .{ .used = true };
         shd_desc.fs.image_sampler_pairs[0] = .{ .used = true, .glsl_name = "tile_tex", .image_slot = 0, .sampler_slot = 0 };
-        shd_desc.fs.image_sampler_pairs[1] = .{ .used = true, .glsl_name = "pal_tex", .image_slot = 1, .sampler_slot = 0 };
+        shd_desc.fs.image_sampler_pairs[1] = .{ .used = true, .glsl_name = "pal_tex", .image_slot = 1, .sampler_slot = 1 };
         shd_desc.vs.source = switch (sg.queryBackend()) {
             .D3D11 => @embedFile("shaders/offscreen_vs.hlsl"),
             .GLCORE33 => @embedFile("shaders/offscreen_vs.v330.glsl"),
@@ -2463,6 +2464,7 @@ fn gfxCreateResources() void {
     state.gfx.offscreen.bind.fs.images[0] = state.gfx.offscreen.tile_img;
     state.gfx.offscreen.bind.fs.images[1] = state.gfx.offscreen.palette_img;
     state.gfx.offscreen.bind.fs.samplers[0] = state.gfx.offscreen.sampler;
+    state.gfx.offscreen.bind.fs.samplers[1] = state.gfx.offscreen.sampler;
     state.gfx.display.bind.vertex_buffers[0] = state.gfx.display.quad_vbuf;
     state.gfx.display.bind.fs.images[0] = state.gfx.offscreen.render_target;
     state.gfx.display.bind.fs.samplers[0] = state.gfx.display.sampler;
