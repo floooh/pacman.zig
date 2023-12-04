@@ -20,7 +20,7 @@ cd pacman.zig
 zig build run
 ```
 
-On Windows, rendering is done through D3D11, on Linux through OpenGL and
+On Windows, rendering is done via D3D11, on Linux through OpenGL and
 on macOS through Metal.
 
 On Linux, you need to install the usual dev-packages for GL-, X11- and ALSA-development.
