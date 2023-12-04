@@ -1,5 +1,4 @@
 #define SOKOL_IMPL
-#define SOKOL_ZIG_BINDINGS
 #define SOKOL_NO_ENTRY
 #if defined(_WIN32)
     #define SOKOL_WIN32_FORCE_MAIN
