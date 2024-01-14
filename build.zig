@@ -44,6 +44,7 @@ fn buildWeb(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMode,
     pacman.root_module.addImport("sokol", dep_sokol.module("sokol"));
 
     // create a build step which invokes the Emscripten linker
+    const emsdk = dep_sokol.builder.dependency("emsdk", .{});
     const emcc_link_step = try sokol.emccLinkStep(b, .{
         .target = target,
         .optimize = optimize,
@@ -51,9 +52,10 @@ fn buildWeb(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMode,
         .shell_file_path = dep_sokol.path("src/sokol/web/shell.html").getPath(b),
         .lib_sokol = dep_sokol.artifact("sokol"), // this is the sokol C library
         .lib_main = pacman,
+        .emsdk = emsdk,
     });
     // ...and a special run step to start the web build output via 'emrun'
-    const emrun_step = sokol.emrunStep(b, .{ .name = "pacman" });
+    const emrun_step = sokol.emrunStep(b, .{ .name = "pacman", .emsdk = emsdk });
     emrun_step.step.dependOn(&emcc_link_step.step);
     b.step("run", "Run pacman").dependOn(&emrun_step.step);
 }
