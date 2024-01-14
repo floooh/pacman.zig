@@ -11,12 +11,12 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - uses: goto-bus-stop/setup-zig@v2
-        with:
-          version: 0.12.0-dev.789+e6590fea1
       - name: prepare-linux
         if: runner.os == 'Linux'
         run: |
             sudo apt-get update
             sudo apt-get install libglu1-mesa-dev mesa-common-dev xorg-dev libasound-dev
-      - name: build
+      - name: build-native
         run: zig build
+      - name: build-web
+        run: zig build -Dtarget=wasm32-emscripten
