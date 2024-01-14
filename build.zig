@@ -34,7 +34,7 @@ fn buildNative(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMo
     b.step("run", "Run pacman").dependOn(&run.step);
 }
 
-// for web builds, the Zig code needs to be built into a native library and linked with the Emscripten linker
+// for web builds, the Zig code needs to be built into a library and linked with the Emscripten linker
 fn buildWeb(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Build.Dependency) !void {
     const pacman = b.addStaticLibrary(.{
         .name = "pacman",
