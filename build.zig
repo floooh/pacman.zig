@@ -1,5 +1,4 @@
 const std = @import("std");
-const builtin = @import("builtin");
 const Build = std.Build;
 const OptimizeMode = std.builtin.OptimizeMode;
 const sokol = @import("sokol");
