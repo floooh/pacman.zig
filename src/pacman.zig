@@ -2828,20 +2828,6 @@ pub fn main() void {
     });
 }
 
-// special entry point for Emscripten build, called from src/emscripten/entry.c
-export fn emsc_main() void {
-    sapp.run(.{
-        .init_cb = init,
-        .frame_cb = frame,
-        .event_cb = input,
-        .cleanup_cb = cleanup,
-        .width = 2 * DisplayPixelsX,
-        .height = 2 * DisplayPixelsY,
-        .window_title = "pacman.zig",
-        .logger = .{ .func = slog.func },
-    });
-}
-
 //-- Sound Effect Register Dumps -----------------------------------------------
 
 //  Each line is a 'register dump' for one 60Hz tick. Each 32-bit number
