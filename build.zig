@@ -45,7 +45,7 @@ fn buildWeb(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMode,
 
     // create a build step which invokes the Emscripten linker
     const emsdk = dep_sokol.builder.dependency("emsdk", .{});
-    const emcc_link_step = try sokol.emccLinkStep(b, .{
+    const emcc_link_step = try sokol.emLinkStep(b, .{
         .target = target,
         .optimize = optimize,
         .use_webgl2 = true,
@@ -55,7 +55,7 @@ fn buildWeb(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMode,
         .emsdk = emsdk,
     });
     // ...and a special run step to start the web build output via 'emrun'
-    const emrun_step = sokol.emrunStep(b, .{ .name = "pacman", .emsdk = emsdk });
+    const emrun_step = sokol.emRunStep(b, .{ .name = "pacman", .emsdk = emsdk });
     emrun_step.step.dependOn(&emcc_link_step.step);
     b.step("run", "Run pacman").dependOn(&emrun_step.step);
 }
