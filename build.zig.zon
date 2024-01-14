@@ -10,8 +10,12 @@
     },
     .dependencies = .{
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#2a0d82e1716974d4ff6f9e8a4bf8622b50e5704a",
-            .hash = "12202f765364105d805e7b3a6a90943505307565479ddb2743c57a71c7b87b5181a1",
+            .url = "git+https://github.com/floooh/sokol-zig.git#61f118be7e710719243894f277f0f200097502bd",
+            .hash = "1220e4de5737fcb71d6ea115b594cc8dffc737cd6a429dc94bb7d64d4b6fc0f33422",
+        },
+        .emsdk = .{
+            .url = "git+https://github.com/emscripten-core/emsdk#0bbae74935d57ff41739648c12cf90b56668398f",
+            .hash = "1220f1340cd871b444021c600661f921f96091ce0815fa43008528f4844cece7e245",
         },
     },
 }
