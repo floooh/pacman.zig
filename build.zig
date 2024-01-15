@@ -20,7 +20,7 @@ pub fn build(b: *Build) !void {
 }
 
 // this is the regular build for all native platforms, nothing surprising here
-fn buildNative(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Build.Dependency) !void {
+fn buildNative(b: *Build, target: Build.ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Build.Dependency) !void {
     const pacman = b.addExecutable(.{
         .name = "pacman",
         .target = target,
@@ -34,7 +34,7 @@ fn buildNative(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMo
 }
 
 // for web builds, the Zig code needs to be built into a library and linked with the Emscripten linker
-fn buildWeb(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Build.Dependency) !void {
+fn buildWeb(b: *Build, target: Build.ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Build.Dependency) !void {
     const pacman = b.addStaticLibrary(.{
         .name = "pacman",
         .target = target,
