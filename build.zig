@@ -46,13 +46,14 @@ fn buildWeb(b: *Build, target: std.Build.ResolvedTarget, optimize: OptimizeMode,
     // create a build step which invokes the Emscripten linker
     const emsdk = dep_sokol.builder.dependency("emsdk", .{});
     const link_step = try sokol.emLinkStep(b, .{
+        .lib_main = pacman,
         .target = target,
         .optimize = optimize,
-        .use_webgl2 = true,
-        .shell_file_path = dep_sokol.path("src/sokol/web/shell.html").getPath(b),
-        .lib_sokol = dep_sokol.artifact("sokol"), // this is the sokol C library
-        .lib_main = pacman,
         .emsdk = emsdk,
+        .use_webgl2 = true,
+        .use_emmalloc = true,
+        .use_filesystem = false,
+        .shell_file_path = dep_sokol.path("src/sokol/web/shell.html").getPath(b),
     });
     // ...and a special run step to start the web build output via 'emrun'
     const run = sokol.emRunStep(b, .{ .name = "pacman", .emsdk = emsdk });
