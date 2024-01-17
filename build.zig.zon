@@ -1,0 +1,17 @@
+.{
+    .name = "pacman",
+    .version = "0.1.0",
+    .paths = .{
+        "src",
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+        "README.md",
+    },
+    .dependencies = .{
+        .sokol = .{
+            .url = "git+https://github.com/floooh/sokol-zig.git#2edeb6f1633f17215c3d98eea40a2a4074bb5868",
+            .hash = "1220be380b30924e501c49532b6e3e73136098deb8064756923540da9106e184f8b5",
+        },
+    },
+}
