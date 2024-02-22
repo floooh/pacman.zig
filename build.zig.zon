@@ -9,9 +9,10 @@
         "README.md",
     },
     .dependencies = .{
+        // FIXME: change commit hash after merge to master
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#bb25ba5274bb9c351094b389480e14c25575e952",
-            .hash = "1220ac3b2a6b51919b480617784ef15f45c79eb3e53bfaad895d6fe877156d5d47fa",
+            .url = "git+https://github.com/floooh/sokol-zig.git#f2e06ace73ed0d9eea734258e8abb821a46dd2fe",
+            .hash = "122067b58e43e8a68159ba8790026cc070f19e523fcad9b3fb6f8838ea75ab1c494d",
         },
     },
 }

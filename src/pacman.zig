@@ -8,7 +8,7 @@ const math = @import("std").math;
 const sokol = @import("sokol");
 const sg = sokol.gfx;
 const sapp = sokol.app;
-const sgapp = sokol.app_gfx_glue;
+const sglue = sokol.glue;
 const saudio = sokol.audio;
 const slog = sokol.log;
 
@@ -375,7 +375,7 @@ const State = struct {
             render_target: sg.Image = .{},
             sampler: sg.Sampler = .{},
             pip: sg.Pipeline = .{},
-            pass: sg.Pass = .{},
+            attachments: sg.Attachments = .{},
             bind: sg.Bindings = .{},
         } = .{},
         display: struct {
@@ -1859,8 +1859,8 @@ fn gfxInit() void {
         .image_pool_size = 3,
         .shader_pool_size = 2,
         .pipeline_pool_size = 2,
-        .pass_pool_size = 1,
-        .context = sgapp.context(),
+        .attachments_pool_size = 1,
+        .environment = sglue.environment(),
         .logger = .{ .func = slog.func },
     });
     gfxDecodeTiles();
@@ -2058,17 +2058,15 @@ fn gfxFrame() void {
     sg.updateBuffer(state.gfx.offscreen.vbuf, .{ .ptr = &data.vertices, .size = state.gfx.num_vertices * @sizeOf(Vertex) });
 
     // render tiles and sprites into offscreen render target
-    sg.beginPass(state.gfx.offscreen.pass, state.gfx.pass_action);
+    sg.beginPass(.{ .action = state.gfx.pass_action, .attachments = state.gfx.offscreen.attachments });
     sg.applyPipeline(state.gfx.offscreen.pip);
     sg.applyBindings(state.gfx.offscreen.bind);
     sg.draw(0, state.gfx.num_vertices, 1);
     sg.endPass();
 
     // upscale-render the offscreen render target into the display framebuffer
-    const canvas_width = sapp.widthf();
-    const canvas_height = sapp.heightf();
-    sg.beginDefaultPassf(state.gfx.pass_action, canvas_width, canvas_height);
-    gfxAdjustViewport(canvas_width, canvas_height);
+    sg.beginPass(.{ .action = state.gfx.pass_action, .swapchain = sglue.swapchain() });
+    gfxAdjustViewport(sapp.widthf(), sapp.heightf());
     sg.applyPipeline(state.gfx.display.pip);
     sg.applyBindings(state.gfx.display.bind);
     sg.draw(0, 4, 1);
@@ -2416,9 +2414,9 @@ fn gfxCreateResources() void {
 
     // a pass object for rendering into the offscreen render target
     {
-        var pass_desc: sg.PassDesc = .{};
-        pass_desc.color_attachments[0].image = state.gfx.offscreen.render_target;
-        state.gfx.offscreen.pass = sg.makePass(pass_desc);
+        var atts_desc: sg.AttachmentsDesc = .{};
+        atts_desc.colors[0].image = state.gfx.offscreen.render_target;
+        state.gfx.offscreen.attachments = sg.makeAttachments(atts_desc);
     }
 
     // create the decoded tile+sprite texture
