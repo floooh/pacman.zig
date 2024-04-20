@@ -25,7 +25,7 @@ fn buildNative(b: *Build, target: Build.ResolvedTarget, optimize: OptimizeMode, 
         .name = "pacman",
         .target = target,
         .optimize = optimize,
-        .root_source_file = .{ .path = "src/pacman.zig" },
+        .root_source_file = b.path("src/pacman.zig"),
     });
     pacman.root_module.addImport("sokol", dep_sokol.module("sokol"));
     b.installArtifact(pacman);
@@ -39,7 +39,7 @@ fn buildWeb(b: *Build, target: Build.ResolvedTarget, optimize: OptimizeMode, dep
         .name = "pacman",
         .target = target,
         .optimize = optimize,
-        .root_source_file = .{ .path = "src/pacman.zig" },
+        .root_source_file = b.path("src/pacman.zig"),
     });
     pacman.root_module.addImport("sokol", dep_sokol.module("sokol"));
 
