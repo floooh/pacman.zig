@@ -11,6 +11,7 @@ const sapp = sokol.app;
 const sglue = sokol.glue;
 const saudio = sokol.audio;
 const slog = sokol.log;
+const shd = @import("shader.zig");
 
 // debugging and config options
 const AudioVolume = 0.5;
@@ -2334,42 +2335,16 @@ fn gfxCreateResources() void {
     });
 
     // create pipeline and shader for rendering into offscreen render target
-    // NOTE: initializating structs with embedded arrays isn't great yet in Zig
-    // because arrays aren't "filled up" with default items.
     {
-        var shd_desc: sg.ShaderDesc = .{};
-        shd_desc.attrs[0] = .{ .name = "pos", .sem_name = "POSITION" };
-        shd_desc.attrs[1] = .{ .name = "uv_in", .sem_name = "TEXCOORD", .sem_index = 0 };
-        shd_desc.attrs[2] = .{ .name = "data_in", .sem_name = "TEXCOORD", .sem_index = 1 };
-        shd_desc.fs.images[0] = .{ .used = true };
-        shd_desc.fs.images[1] = .{ .used = true };
-        shd_desc.fs.samplers[0] = .{ .used = true };
-        shd_desc.fs.samplers[1] = .{ .used = true };
-        shd_desc.fs.image_sampler_pairs[0] = .{ .used = true, .glsl_name = "tile_tex", .image_slot = 0, .sampler_slot = 0 };
-        shd_desc.fs.image_sampler_pairs[1] = .{ .used = true, .glsl_name = "pal_tex", .image_slot = 1, .sampler_slot = 1 };
-        shd_desc.vs.source = switch (sg.queryBackend()) {
-            .D3D11 => @embedFile("shaders/offscreen_vs.hlsl"),
-            .GLCORE33 => @embedFile("shaders/offscreen_vs.v330.glsl"),
-            .GLES3 => @embedFile("shaders/offscreen_vs.v100.glsl"),
-            .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_vs.metal"),
-            else => unreachable,
-        };
-        shd_desc.fs.source = switch (sg.queryBackend()) {
-            .D3D11 => @embedFile("shaders/offscreen_fs.hlsl"),
-            .GLCORE33 => @embedFile("shaders/offscreen_fs.v330.glsl"),
-            .GLES3 => @embedFile("shaders/offscreen_fs.v100.glsl"),
-            .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/offscreen_fs.metal"),
-            else => unreachable,
-        };
         var pip_desc: sg.PipelineDesc = .{
-            .shader = sg.makeShader(shd_desc),
+            .shader = sg.makeShader(shd.offscreenShaderDesc(sg.queryBackend())),
             .depth = .{
                 .pixel_format = .NONE,
             },
         };
-        pip_desc.layout.attrs[0].format = .FLOAT2;
-        pip_desc.layout.attrs[1].format = .FLOAT2;
-        pip_desc.layout.attrs[2].format = .UBYTE4N;
+        pip_desc.layout.attrs[shd.ATTR_vs_offscreen_in_pos].format = .FLOAT2;
+        pip_desc.layout.attrs[shd.ATTR_vs_offscreen_in_uv].format = .FLOAT2;
+        pip_desc.layout.attrs[shd.ATTR_vs_offscreen_in_data].format = .UBYTE4N;
         pip_desc.colors[0].pixel_format = .RGBA8;
         pip_desc.colors[0].blend = .{ .enabled = true, .src_factor_rgb = .SRC_ALPHA, .dst_factor_rgb = .ONE_MINUS_SRC_ALPHA };
         state.gfx.offscreen.pip = sg.makePipeline(pip_desc);
@@ -2377,30 +2352,11 @@ fn gfxCreateResources() void {
 
     // create pipeline and shader for rendering into display
     {
-        var shd_desc: sg.ShaderDesc = .{};
-        shd_desc.attrs[0] = .{ .name = "pos", .sem_name = "POSITION" };
-        shd_desc.fs.images[0] = .{ .used = true };
-        shd_desc.fs.samplers[0] = .{ .used = true };
-        shd_desc.fs.image_sampler_pairs[0] = .{ .used = true, .glsl_name = "tex", .image_slot = 0, .sampler_slot = 0 };
-        shd_desc.vs.source = switch (sg.queryBackend()) {
-            .D3D11 => @embedFile("shaders/display_vs.hlsl"),
-            .GLCORE33 => @embedFile("shaders/display_vs.v330.glsl"),
-            .GLES3 => @embedFile("shaders/display_vs.v100.glsl"),
-            .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_vs.metal"),
-            else => unreachable,
-        };
-        shd_desc.fs.source = switch (sg.queryBackend()) {
-            .D3D11 => @embedFile("shaders/display_fs.hlsl"),
-            .GLCORE33 => @embedFile("shaders/display_fs.v330.glsl"),
-            .GLES3 => @embedFile("shaders/display_fs.v100.glsl"),
-            .METAL_MACOS, .METAL_IOS, .METAL_SIMULATOR => @embedFile("shaders/display_fs.metal"),
-            else => unreachable,
-        };
         var pip_desc: sg.PipelineDesc = .{
-            .shader = sg.makeShader(shd_desc),
+            .shader = sg.makeShader(shd.displayShaderDesc(sg.queryBackend())),
             .primitive_type = .TRIANGLE_STRIP,
         };
-        pip_desc.layout.attrs[0].format = .FLOAT2;
+        pip_desc.layout.attrs[shd.ATTR_vs_display_pos].format = .FLOAT2;
         state.gfx.display.pip = sg.makePipeline(pip_desc);
     }
 
@@ -2459,13 +2415,12 @@ fn gfxCreateResources() void {
 
     // setup resource binding structs
     state.gfx.offscreen.bind.vertex_buffers[0] = state.gfx.offscreen.vbuf;
-    state.gfx.offscreen.bind.fs.images[0] = state.gfx.offscreen.tile_img;
-    state.gfx.offscreen.bind.fs.images[1] = state.gfx.offscreen.palette_img;
-    state.gfx.offscreen.bind.fs.samplers[0] = state.gfx.offscreen.sampler;
-    state.gfx.offscreen.bind.fs.samplers[1] = state.gfx.offscreen.sampler;
+    state.gfx.offscreen.bind.fs.images[shd.SLOT_tile_tex] = state.gfx.offscreen.tile_img;
+    state.gfx.offscreen.bind.fs.images[shd.SLOT_pal_tex] = state.gfx.offscreen.palette_img;
+    state.gfx.offscreen.bind.fs.samplers[shd.SLOT_smp] = state.gfx.offscreen.sampler;
     state.gfx.display.bind.vertex_buffers[0] = state.gfx.display.quad_vbuf;
-    state.gfx.display.bind.fs.images[0] = state.gfx.offscreen.render_target;
-    state.gfx.display.bind.fs.samplers[0] = state.gfx.display.sampler;
+    state.gfx.display.bind.fs.images[shd.SLOT_tex] = state.gfx.offscreen.render_target;
+    state.gfx.display.bind.fs.samplers[shd.SLOT_smp] = state.gfx.display.sampler;
 }
 
 //--- audio system -------------------------------------------------------------
