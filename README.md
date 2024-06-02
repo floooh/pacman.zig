@@ -33,8 +33,8 @@ zig build -Dtarget=wasm32-emscripten run
 ...or to build a release versions:
 
 ```bash
-zig build -Doptimize=ReleaseSafe run
-zig build -Doptimize=ReleaseSmall -Dtarget=wasm32-emscripten run
+zig build --release=safe run
+zig build -Dtarget=wasm32-emscripten --release=small run
 ```
 
 On Windows, rendering is done via D3D11, on Linux via OpenGL, on macOS via Metal
