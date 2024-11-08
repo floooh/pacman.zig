@@ -1,4 +1,5 @@
 const sg = @import("sokol").gfx;
+const std = @import("std");
 //
 //    #version:1# (machine generated, don't edit!)
 //
@@ -11,57 +12,55 @@ const sg = @import("sokol").gfx;
 //    =========
 //    Shader program: 'display':
 //        Get shader desc: shd.displayShaderDesc(sg.queryBackend());
-//        Vertex shader: vs_display
-//            Attributes:
-//                ATTR_vs_display_pos => 0
-//        Fragment shader: fs_display
-//            Image 'tex':
-//                Image type: ._2D
-//                Sample type: .FLOAT
-//                Multisampled: false
-//                Bind slot: SLOT_tex => 0
-//            Sampler 'smp':
-//                Type: .FILTERING
-//                Bind slot: SLOT_smp => 0
-//            Image Sampler Pair 'tex_smp':
-//                Image: tex
-//                Sampler: smp
+//        Vertex Shader: vs_display
+//        Fragment Shader: fs_display
+//        Attributes:
+//            ATTR_display_pos => 0
 //    Shader program: 'offscreen':
 //        Get shader desc: shd.offscreenShaderDesc(sg.queryBackend());
-//        Vertex shader: vs_offscreen
-//            Attributes:
-//                ATTR_vs_offscreen_in_pos => 0
-//                ATTR_vs_offscreen_in_uv => 1
-//                ATTR_vs_offscreen_in_data => 2
-//        Fragment shader: fs_offscreen
-//            Image 'tile_tex':
-//                Image type: ._2D
-//                Sample type: .FLOAT
-//                Multisampled: false
-//                Bind slot: SLOT_tile_tex => 0
-//            Image 'pal_tex':
-//                Image type: ._2D
-//                Sample type: .FLOAT
-//                Multisampled: false
-//                Bind slot: SLOT_pal_tex => 1
-//            Sampler 'smp':
-//                Type: .FILTERING
-//                Bind slot: SLOT_smp => 0
-//            Image Sampler Pair 'tile_tex_smp':
-//                Image: tile_tex
-//                Sampler: smp
-//            Image Sampler Pair 'pal_tex_smp':
-//                Image: pal_tex
-//                Sampler: smp
+//        Vertex Shader: vs_offscreen
+//        Fragment Shader: fs_offscreen
+//        Attributes:
+//            ATTR_offscreen_in_pos => 0
+//            ATTR_offscreen_in_uv => 1
+//            ATTR_offscreen_in_data => 2
+//    Bindings:
+//        Image 'tex':
+//            Image type: ._2D
+//            Sample type: .FLOAT
+//            Multisampled: false
+//            Bind slot: IMG_tex => 0
+//        Image 'tile_tex':
+//            Image type: ._2D
+//            Sample type: .FLOAT
+//            Multisampled: false
+//            Bind slot: IMG_tile_tex => 0
+//        Image 'pal_tex':
+//            Image type: ._2D
+//            Sample type: .FLOAT
+//            Multisampled: false
+//            Bind slot: IMG_pal_tex => 1
+//        Sampler 'smp':
+//            Type: .FILTERING
+//            Bind slot: SMP_smp => 0
+//        Image Sampler Pair 'tex_smp':
+//            Image: tex
+//            Sampler: smp
+//        Image Sampler Pair 'tile_tex_smp':
+//            Image: tile_tex
+//            Sampler: smp
+//        Image Sampler Pair 'pal_tex_smp':
+//            Image: pal_tex
+//            Sampler: smp
 //
-pub const ATTR_vs_display_pos = 0;
-pub const ATTR_vs_offscreen_in_pos = 0;
-pub const ATTR_vs_offscreen_in_uv = 1;
-pub const ATTR_vs_offscreen_in_data = 2;
-pub const SLOT_tile_tex = 0;
-pub const SLOT_pal_tex = 1;
-pub const SLOT_tex = 0;
-pub const SLOT_smp = 0;
+pub const ATTR_display_pos = 0;
+pub const ATTR_offscreen_in_pos = 0;
+pub const ATTR_offscreen_in_uv = 1;
+pub const ATTR_offscreen_in_data = 2;
+pub const IMG_tex = 0;
+pub const IMG_tile_tex = 0;
+pub const IMG_pal_tex = 1;
+pub const SMP_smp = 0;
 //
 //    #version 410
 //
@@ -902,72 +901,76 @@ pub fn displayShaderDesc(backend: sg.Backend) sg.ShaderDesc {
     desc.label = "display_shader";
     switch (backend) {
         .GLCORE => {
-            desc.attrs[0].name = "pos";
-            desc.vs.source = &vs_display_source_glsl410;
-            desc.vs.entry = "main";
-            desc.fs.source = &fs_display_source_glsl410;
-            desc.fs.entry = "main";
-            desc.fs.images[0].used = true;
-            desc.fs.images[0].multisampled = false;
-            desc.fs.images[0].image_type = ._2D;
-            desc.fs.images[0].sample_type = .FLOAT;
-            desc.fs.samplers[0].used = true;
-            desc.fs.samplers[0].sampler_type = .FILTERING;
-            desc.fs.image_sampler_pairs[0].used = true;
-            desc.fs.image_sampler_pairs[0].image_slot = 0;
-            desc.fs.image_sampler_pairs[0].sampler_slot = 0;
-            desc.fs.image_sampler_pairs[0].glsl_name = "tex_smp";
+            desc.vertex_func.source = &vs_display_source_glsl410;
+            desc.vertex_func.entry = "main";
+            desc.fragment_func.source = &fs_display_source_glsl410;
+            desc.fragment_func.entry = "main";
+            desc.attrs[0].glsl_name = "pos";
+            desc.images[0].stage = .FRAGMENT;
+            desc.images[0].multisampled = false;
+            desc.images[0].image_type = ._2D;
+            desc.images[0].sample_type = .FLOAT;
+            desc.samplers[0].stage = .FRAGMENT;
+            desc.samplers[0].sampler_type = .FILTERING;
+            desc.image_sampler_pairs[0].stage = .FRAGMENT;
+            desc.image_sampler_pairs[0].image_slot = 0;
+            desc.image_sampler_pairs[0].sampler_slot = 0;
+            desc.image_sampler_pairs[0].glsl_name = "tex_smp";
         },
         .GLES3 => {
-            desc.attrs[0].name = "pos";
-            desc.vs.source = &vs_display_source_glsl300es;
-            desc.vs.entry = "main";
-            desc.fs.source = &fs_display_source_glsl300es;
-            desc.fs.entry = "main";
-            desc.fs.images[0].used = true;
-            desc.fs.images[0].multisampled = false;
-            desc.fs.images[0].image_type = ._2D;
-            desc.fs.images[0].sample_type = .FLOAT;
-            desc.fs.samplers[0].used = true;
-            desc.fs.samplers[0].sampler_type = .FILTERING;
-            desc.fs.image_sampler_pairs[0].used = true;
-            desc.fs.image_sampler_pairs[0].image_slot = 0;
-            desc.fs.image_sampler_pairs[0].sampler_slot = 0;
-            desc.fs.image_sampler_pairs[0].glsl_name = "tex_smp";
+            desc.vertex_func.source = &vs_display_source_glsl300es;
+            desc.vertex_func.entry = "main";
+            desc.fragment_func.source = &fs_display_source_glsl300es;
+            desc.fragment_func.entry = "main";
+            desc.attrs[0].glsl_name = "pos";
+            desc.images[0].stage = .FRAGMENT;
+            desc.images[0].multisampled = false;
+            desc.images[0].image_type = ._2D;
+            desc.images[0].sample_type = .FLOAT;
+            desc.samplers[0].stage = .FRAGMENT;
+            desc.samplers[0].sampler_type = .FILTERING;
+            desc.image_sampler_pairs[0].stage = .FRAGMENT;
+            desc.image_sampler_pairs[0].image_slot = 0;
+            desc.image_sampler_pairs[0].sampler_slot = 0;
+            desc.image_sampler_pairs[0].glsl_name = "tex_smp";
         },
         .D3D11 => {
-            desc.attrs[0].sem_name = "TEXCOORD";
-            desc.attrs[0].sem_index = 0;
-            desc.vs.source = &vs_display_source_hlsl4;
-            desc.vs.d3d11_target = "vs_4_0";
-            desc.vs.entry = "main";
-            desc.fs.source = &fs_display_source_hlsl4;
-            desc.fs.d3d11_target = "ps_4_0";
-            desc.fs.entry = "main";
-            desc.fs.images[0].used = true;
-            desc.fs.images[0].multisampled = false;
-            desc.fs.images[0].image_type = ._2D;
-            desc.fs.images[0].sample_type = .FLOAT;
-            desc.fs.samplers[0].used = true;
-            desc.fs.samplers[0].sampler_type = .FILTERING;
-            desc.fs.image_sampler_pairs[0].used = true;
-            desc.fs.image_sampler_pairs[0].image_slot = 0;
-            desc.fs.image_sampler_pairs[0].sampler_slot = 0;
+            desc.vertex_func.source = &vs_display_source_hlsl4;
+            desc.vertex_func.d3d11_target = "vs_4_0";
+            desc.vertex_func.entry = "main";
+            desc.fragment_func.source = &fs_display_source_hlsl4;
+            desc.fragment_func.d3d11_target = "ps_4_0";
+            desc.fragment_func.entry = "main";
+            desc.attrs[0].hlsl_sem_name = "TEXCOORD";
+            desc.attrs[0].hlsl_sem_index = 0;
+            desc.images[0].stage = .FRAGMENT;
+            desc.images[0].multisampled = false;
+            desc.images[0].image_type = ._2D;
+            desc.images[0].sample_type = .FLOAT;
+            desc.images[0].hlsl_register_t_n = 0;
+            desc.samplers[0].stage = .FRAGMENT;
+            desc.samplers[0].sampler_type = .FILTERING;
+            desc.samplers[0].hlsl_register_s_n = 0;
+            desc.image_sampler_pairs[0].stage = .FRAGMENT;
+            desc.image_sampler_pairs[0].image_slot = 0;
+            desc.image_sampler_pairs[0].sampler_slot = 0;
         },
         .METAL_MACOS => {
-            desc.vs.source = &vs_display_source_metal_macos;
-            desc.vs.entry = "main0";
-            desc.fs.source = &fs_display_source_metal_macos;
-            desc.fs.entry = "main0";
-            desc.fs.images[0].used = true;
-            desc.fs.images[0].multisampled = false;
-            desc.fs.images[0].image_type = ._2D;
-            desc.fs.images[0].sample_type = .FLOAT;
-            desc.fs.samplers[0].used = true;
-            desc.fs.samplers[0].sampler_type = .FILTERING;
-            desc.fs.image_sampler_pairs[0].used = true;
-            desc.fs.image_sampler_pairs[0].image_slot = 0;
-            desc.fs.image_sampler_pairs[0].sampler_slot = 0;
+            desc.vertex_func.source = &vs_display_source_metal_macos;
+            desc.vertex_func.entry = "main0";
+            desc.fragment_func.source = &fs_display_source_metal_macos;
+            desc.fragment_func.entry = "main0";
+            desc.images[0].stage = .FRAGMENT;
+            desc.images[0].multisampled = false;
+            desc.images[0].image_type = ._2D;
+            desc.images[0].sample_type = .FLOAT;
+            desc.images[0].msl_texture_n = 0;
+            desc.samplers[0].stage = .FRAGMENT;
+            desc.samplers[0].sampler_type = .FILTERING;
+            desc.samplers[0].msl_sampler_n = 0;
+            desc.image_sampler_pairs[0].stage = .FRAGMENT;
+            desc.image_sampler_pairs[0].image_slot = 0;
+            desc.image_sampler_pairs[0].sampler_slot = 0;
         },
         else => {},
     }
@@ -978,110 +981,116 @@ pub fn offscreenShaderDesc(backend: sg.Backend) sg.ShaderDesc {
     desc.label = "offscreen_shader";
     switch (backend) {
         .GLCORE => {
-            desc.attrs[0].name = "in_pos";
-            desc.attrs[1].name = "in_uv";
-            desc.attrs[2].name = "in_data";
-            desc.vs.source = &vs_offscreen_source_glsl410;
-            desc.vs.entry = "main";
-            desc.fs.source = &fs_offscreen_source_glsl410;
-            desc.fs.entry = "main";
-            desc.fs.images[0].used = true;
-            desc.fs.images[0].multisampled = false;
-            desc.fs.images[0].image_type = ._2D;
-            desc.fs.images[0].sample_type = .FLOAT;
-            desc.fs.images[1].used = true;
-            desc.fs.images[1].multisampled = false;
-            desc.fs.images[1].image_type = ._2D;
-            desc.fs.images[1].sample_type = .FLOAT;
-            desc.fs.samplers[0].used = true;
-            desc.fs.samplers[0].sampler_type = .FILTERING;
-            desc.fs.image_sampler_pairs[0].used = true;
-            desc.fs.image_sampler_pairs[0].image_slot = 0;
-            desc.fs.image_sampler_pairs[0].sampler_slot = 0;
-            desc.fs.image_sampler_pairs[0].glsl_name = "tile_tex_smp";
-            desc.fs.image_sampler_pairs[1].used = true;
-            desc.fs.image_sampler_pairs[1].image_slot = 1;
-            desc.fs.image_sampler_pairs[1].sampler_slot = 0;
-            desc.fs.image_sampler_pairs[1].glsl_name = "pal_tex_smp";
+            desc.vertex_func.source = &vs_offscreen_source_glsl410;
+            desc.vertex_func.entry = "main";
+            desc.fragment_func.source = &fs_offscreen_source_glsl410;
+            desc.fragment_func.entry = "main";
+            desc.attrs[0].glsl_name = "in_pos";
+            desc.attrs[1].glsl_name = "in_uv";
+            desc.attrs[2].glsl_name = "in_data";
+            desc.images[0].stage = .FRAGMENT;
+            desc.images[0].multisampled = false;
+            desc.images[0].image_type = ._2D;
+            desc.images[0].sample_type = .FLOAT;
+            desc.images[1].stage = .FRAGMENT;
+            desc.images[1].multisampled = false;
+            desc.images[1].image_type = ._2D;
+            desc.images[1].sample_type = .FLOAT;
+            desc.samplers[0].stage = .FRAGMENT;
+            desc.samplers[0].sampler_type = .FILTERING;
+            desc.image_sampler_pairs[0].stage = .FRAGMENT;
+            desc.image_sampler_pairs[0].image_slot = 0;
+            desc.image_sampler_pairs[0].sampler_slot = 0;
+            desc.image_sampler_pairs[0].glsl_name = "tile_tex_smp";
+            desc.image_sampler_pairs[1].stage = .FRAGMENT;
+            desc.image_sampler_pairs[1].image_slot = 1;
+            desc.image_sampler_pairs[1].sampler_slot = 0;
+            desc.image_sampler_pairs[1].glsl_name = "pal_tex_smp";
         },
         .GLES3 => {
-            desc.attrs[0].name = "in_pos";
-            desc.attrs[1].name = "in_uv";
-            desc.attrs[2].name = "in_data";
-            desc.vs.source = &vs_offscreen_source_glsl300es;
-            desc.vs.entry = "main";
-            desc.fs.source = &fs_offscreen_source_glsl300es;
-            desc.fs.entry = "main";
-            desc.fs.images[0].used = true;
-            desc.fs.images[0].multisampled = false;
-            desc.fs.images[0].image_type = ._2D;
-            desc.fs.images[0].sample_type = .FLOAT;
-            desc.fs.images[1].used = true;
-            desc.fs.images[1].multisampled = false;
-            desc.fs.images[1].image_type = ._2D;
-            desc.fs.images[1].sample_type = .FLOAT;
-            desc.fs.samplers[0].used = true;
-            desc.fs.samplers[0].sampler_type = .FILTERING;
-            desc.fs.image_sampler_pairs[0].used = true;
-            desc.fs.image_sampler_pairs[0].image_slot = 0;
-            desc.fs.image_sampler_pairs[0].sampler_slot = 0;
-            desc.fs.image_sampler_pairs[0].glsl_name = "tile_tex_smp";
-            desc.fs.image_sampler_pairs[1].used = true;
-            desc.fs.image_sampler_pairs[1].image_slot = 1;
-            desc.fs.image_sampler_pairs[1].sampler_slot = 0;
-            desc.fs.image_sampler_pairs[1].glsl_name = "pal_tex_smp";
+            desc.vertex_func.source = &vs_offscreen_source_glsl300es;
+            desc.vertex_func.entry = "main";
+            desc.fragment_func.source = &fs_offscreen_source_glsl300es;
+            desc.fragment_func.entry = "main";
+            desc.attrs[0].glsl_name = "in_pos";
+            desc.attrs[1].glsl_name = "in_uv";
+            desc.attrs[2].glsl_name = "in_data";
+            desc.images[0].stage = .FRAGMENT;
+            desc.images[0].multisampled = false;
+            desc.images[0].image_type = ._2D;
+            desc.images[0].sample_type = .FLOAT;
+            desc.images[1].stage = .FRAGMENT;
+            desc.images[1].multisampled = false;
+            desc.images[1].image_type = ._2D;
+            desc.images[1].sample_type = .FLOAT;
+            desc.samplers[0].stage = .FRAGMENT;
+            desc.samplers[0].sampler_type = .FILTERING;
+            desc.image_sampler_pairs[0].stage = .FRAGMENT;
+            desc.image_sampler_pairs[0].image_slot = 0;
+            desc.image_sampler_pairs[0].sampler_slot = 0;
+            desc.image_sampler_pairs[0].glsl_name = "tile_tex_smp";
+            desc.image_sampler_pairs[1].stage = .FRAGMENT;
+            desc.image_sampler_pairs[1].image_slot = 1;
+            desc.image_sampler_pairs[1].sampler_slot = 0;
+            desc.image_sampler_pairs[1].glsl_name = "pal_tex_smp";
         },
         .D3D11 => {
-            desc.attrs[0].sem_name = "TEXCOORD";
-            desc.attrs[0].sem_index = 0;
-            desc.attrs[1].sem_name = "TEXCOORD";
-            desc.attrs[1].sem_index = 1;
-            desc.attrs[2].sem_name = "TEXCOORD";
-            desc.attrs[2].sem_index = 2;
-            desc.vs.source = &vs_offscreen_source_hlsl4;
-            desc.vs.d3d11_target = "vs_4_0";
-            desc.vs.entry = "main";
-            desc.fs.source = &fs_offscreen_source_hlsl4;
-            desc.fs.d3d11_target = "ps_4_0";
-            desc.fs.entry = "main";
-            desc.fs.images[0].used = true;
-            desc.fs.images[0].multisampled = false;
-            desc.fs.images[0].image_type = ._2D;
-            desc.fs.images[0].sample_type = .FLOAT;
-            desc.fs.images[1].used = true;
-            desc.fs.images[1].multisampled = false;
-            desc.fs.images[1].image_type = ._2D;
-            desc.fs.images[1].sample_type = .FLOAT;
-            desc.fs.samplers[0].used = true;
-            desc.fs.samplers[0].sampler_type = .FILTERING;
-            desc.fs.image_sampler_pairs[0].used = true;
-            desc.fs.image_sampler_pairs[0].image_slot = 0;
-            desc.fs.image_sampler_pairs[0].sampler_slot = 0;
-            desc.fs.image_sampler_pairs[1].used = true;
-            desc.fs.image_sampler_pairs[1].image_slot = 1;
-            desc.fs.image_sampler_pairs[1].sampler_slot = 0;
+            desc.vertex_func.source = &vs_offscreen_source_hlsl4;
+            desc.vertex_func.d3d11_target = "vs_4_0";
+            desc.vertex_func.entry = "main";
+            desc.fragment_func.source = &fs_offscreen_source_hlsl4;
+            desc.fragment_func.d3d11_target = "ps_4_0";
+            desc.fragment_func.entry = "main";
+            desc.attrs[0].hlsl_sem_name = "TEXCOORD";
+            desc.attrs[0].hlsl_sem_index = 0;
+            desc.attrs[1].hlsl_sem_name = "TEXCOORD";
+            desc.attrs[1].hlsl_sem_index = 1;
+            desc.attrs[2].hlsl_sem_name = "TEXCOORD";
+            desc.attrs[2].hlsl_sem_index = 2;
+            desc.images[0].stage = .FRAGMENT;
+            desc.images[0].multisampled = false;
+            desc.images[0].image_type = ._2D;
+            desc.images[0].sample_type = .FLOAT;
+            desc.images[0].hlsl_register_t_n = 0;
+            desc.images[1].stage = .FRAGMENT;
+            desc.images[1].multisampled = false;
+            desc.images[1].image_type = ._2D;
+            desc.images[1].sample_type = .FLOAT;
+            desc.images[1].hlsl_register_t_n = 1;
+            desc.samplers[0].stage = .FRAGMENT;
+            desc.samplers[0].sampler_type = .FILTERING;
+            desc.samplers[0].hlsl_register_s_n = 0;
+            desc.image_sampler_pairs[0].stage = .FRAGMENT;
+            desc.image_sampler_pairs[0].image_slot = 0;
+            desc.image_sampler_pairs[0].sampler_slot = 0;
+            desc.image_sampler_pairs[1].stage = .FRAGMENT;
+            desc.image_sampler_pairs[1].image_slot = 1;
+            desc.image_sampler_pairs[1].sampler_slot = 0;
         },
         .METAL_MACOS => {
-            desc.vs.source = &vs_offscreen_source_metal_macos;
-            desc.vs.entry = "main0";
-            desc.fs.source = &fs_offscreen_source_metal_macos;
-            desc.fs.entry = "main0";
-            desc.fs.images[0].used = true;
-            desc.fs.images[0].multisampled = false;
-            desc.fs.images[0].image_type = ._2D;
-            desc.fs.images[0].sample_type = .FLOAT;
-            desc.fs.images[1].used = true;
-            desc.fs.images[1].multisampled = false;
-            desc.fs.images[1].image_type = ._2D;
-            desc.fs.images[1].sample_type = .FLOAT;
-            desc.fs.samplers[0].used = true;
-            desc.fs.samplers[0].sampler_type = .FILTERING;
-            desc.fs.image_sampler_pairs[0].used = true;
-            desc.fs.image_sampler_pairs[0].image_slot = 0;
-            desc.fs.image_sampler_pairs[0].sampler_slot = 0;
-            desc.fs.image_sampler_pairs[1].used = true;
-            desc.fs.image_sampler_pairs[1].image_slot = 1;
-            desc.fs.image_sampler_pairs[1].sampler_slot = 0;
+            desc.vertex_func.source = &vs_offscreen_source_metal_macos;
+            desc.vertex_func.entry = "main0";
+            desc.fragment_func.source = &fs_offscreen_source_metal_macos;
+            desc.fragment_func.entry = "main0";
+            desc.images[0].stage = .FRAGMENT;
+            desc.images[0].multisampled = false;
+            desc.images[0].image_type = ._2D;
+            desc.images[0].sample_type = .FLOAT;
+            desc.images[0].msl_texture_n = 0;
+            desc.images[1].stage = .FRAGMENT;
+            desc.images[1].multisampled = false;
+            desc.images[1].image_type = ._2D;
+            desc.images[1].sample_type = .FLOAT;
+            desc.images[1].msl_texture_n = 1;
+            desc.samplers[0].stage = .FRAGMENT;
+            desc.samplers[0].sampler_type = .FILTERING;
+            desc.samplers[0].msl_sampler_n = 0;
+            desc.image_sampler_pairs[0].stage = .FRAGMENT;
+            desc.image_sampler_pairs[0].image_slot = 0;
+            desc.image_sampler_pairs[0].sampler_slot = 0;
+            desc.image_sampler_pairs[1].stage = .FRAGMENT;
+            desc.image_sampler_pairs[1].image_slot = 1;
+            desc.image_sampler_pairs[1].sampler_slot = 0;
         },
         else => {},
     }

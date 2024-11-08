@@ -2342,9 +2342,9 @@ fn gfxCreateResources() void {
                 .pixel_format = .NONE,
             },
         };
-        pip_desc.layout.attrs[shd.ATTR_vs_offscreen_in_pos].format = .FLOAT2;
-        pip_desc.layout.attrs[shd.ATTR_vs_offscreen_in_uv].format = .FLOAT2;
-        pip_desc.layout.attrs[shd.ATTR_vs_offscreen_in_data].format = .UBYTE4N;
+        pip_desc.layout.attrs[shd.ATTR_offscreen_in_pos].format = .FLOAT2;
+        pip_desc.layout.attrs[shd.ATTR_offscreen_in_uv].format = .FLOAT2;
+        pip_desc.layout.attrs[shd.ATTR_offscreen_in_data].format = .UBYTE4N;
         pip_desc.colors[0].pixel_format = .RGBA8;
         pip_desc.colors[0].blend = .{ .enabled = true, .src_factor_rgb = .SRC_ALPHA, .dst_factor_rgb = .ONE_MINUS_SRC_ALPHA };
         state.gfx.offscreen.pip = sg.makePipeline(pip_desc);
@@ -2356,7 +2356,7 @@ fn gfxCreateResources() void {
             .shader = sg.makeShader(shd.displayShaderDesc(sg.queryBackend())),
             .primitive_type = .TRIANGLE_STRIP,
         };
-        pip_desc.layout.attrs[shd.ATTR_vs_display_pos].format = .FLOAT2;
+        pip_desc.layout.attrs[shd.ATTR_display_pos].format = .FLOAT2;
         state.gfx.display.pip = sg.makePipeline(pip_desc);
     }
 
@@ -2415,12 +2415,12 @@ fn gfxCreateResources() void {
 
     // setup resource binding structs
     state.gfx.offscreen.bind.vertex_buffers[0] = state.gfx.offscreen.vbuf;
-    state.gfx.offscreen.bind.fs.images[shd.SLOT_tile_tex] = state.gfx.offscreen.tile_img;
-    state.gfx.offscreen.bind.fs.images[shd.SLOT_pal_tex] = state.gfx.offscreen.palette_img;
-    state.gfx.offscreen.bind.fs.samplers[shd.SLOT_smp] = state.gfx.offscreen.sampler;
+    state.gfx.offscreen.bind.images[shd.IMG_tile_tex] = state.gfx.offscreen.tile_img;
+    state.gfx.offscreen.bind.images[shd.IMG_pal_tex] = state.gfx.offscreen.palette_img;
+    state.gfx.offscreen.bind.samplers[shd.SMP_smp] = state.gfx.offscreen.sampler;
     state.gfx.display.bind.vertex_buffers[0] = state.gfx.display.quad_vbuf;
-    state.gfx.display.bind.fs.images[shd.SLOT_tex] = state.gfx.offscreen.render_target;
-    state.gfx.display.bind.fs.samplers[shd.SLOT_smp] = state.gfx.display.sampler;
+    state.gfx.display.bind.images[shd.IMG_tex] = state.gfx.offscreen.render_target;
+    state.gfx.display.bind.samplers[shd.SMP_smp] = state.gfx.display.sampler;
 }
 
 //--- audio system -------------------------------------------------------------
