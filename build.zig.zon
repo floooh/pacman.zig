@@ -10,8 +10,8 @@
     },
     .dependencies = .{
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#6ac38c06751b320fdf67ba81e86e03aebaf1a0d4",
-            .hash = "1220f0dab58f9fa0d140f8087405d1bcad99b7a913a9d78abf9c4d74a266992ab898",
+            .url = "git+https://github.com/floooh/sokol-zig.git#e0e8205eaac6e7f565667117b139caeac8180714",
+            .hash = "1220c9e7505a30d2f9f08ee638741625a284b020ba7c4eefd02a57dc2803c33399f5",
         },
     },
 }
