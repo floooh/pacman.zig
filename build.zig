@@ -10,45 +10,47 @@ pub fn build(b: *Build) !void {
         .target = target,
         .optimize = optimize,
     });
+    const mod_pacman = b.createModule(.{
+        .root_source_file = b.path("src/pacman.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+        },
+    });
 
     // special case handling for native vs web build
     if (target.result.isWasm()) {
-        try buildWeb(b, target, optimize, dep_sokol);
+        try buildWeb(b, mod_pacman, dep_sokol);
     } else {
-        try buildNative(b, target, optimize, dep_sokol);
+        try buildNative(b, mod_pacman);
     }
 }
 
 // this is the regular build for all native platforms, nothing surprising here
-fn buildNative(b: *Build, target: Build.ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Build.Dependency) !void {
-    const pacman = b.addExecutable(.{
+fn buildNative(b: *Build, mod: *Build.Module) !void {
+    const exe = b.addExecutable(.{
         .name = "pacman",
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/pacman.zig"),
+        .root_module = mod,
     });
-    pacman.root_module.addImport("sokol", dep_sokol.module("sokol"));
-    b.installArtifact(pacman);
-    const run = b.addRunArtifact(pacman);
+    b.installArtifact(exe);
+    const run = b.addRunArtifact(exe);
     b.step("run", "Run pacman").dependOn(&run.step);
 }
 
 // for web builds, the Zig code needs to be built into a library and linked with the Emscripten linker
-fn buildWeb(b: *Build, target: Build.ResolvedTarget, optimize: OptimizeMode, dep_sokol: *Build.Dependency) !void {
-    const pacman = b.addStaticLibrary(.{
+fn buildWeb(b: *Build, mod: *Build.Module, dep_sokol: *Build.Dependency) !void {
+    const lib = b.addStaticLibrary(.{
         .name = "pacman",
-        .target = target,
-        .optimize = optimize,
-        .root_source_file = b.path("src/pacman.zig"),
+        .root_module = mod,
     });
-    pacman.root_module.addImport("sokol", dep_sokol.module("sokol"));
 
     // create a build step which invokes the Emscripten linker
     const emsdk = dep_sokol.builder.dependency("emsdk", .{});
     const link_step = try sokol.emLinkStep(b, .{
-        .lib_main = pacman,
-        .target = target,
-        .optimize = optimize,
+        .lib_main = lib,
+        .target = mod.resolved_target.?,
+        .optimize = mod.optimize.?,
         .emsdk = emsdk,
         .use_webgl2 = true,
         .use_emmalloc = true,
