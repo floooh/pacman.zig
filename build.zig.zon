@@ -1,5 +1,5 @@
 .{
-    .name = "pacman",
+    .name = .pacman,
     .version = "0.1.0",
     .paths = .{
         "src",
@@ -8,10 +8,11 @@
         "LICENSE",
         "README.md",
     },
+    .fingerprint = 0xa1c2e4b869826271,
     .dependencies = .{
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#a292c3cea079c3c9de8a6b1c2fd79ddae472e088",
-            .hash = "1220072a0988c8ce53680094a04a6513cce6854d8f838a2a17d34bf9176da73023a2",
+            .url = "git+https://github.com/floooh/sokol-zig.git#c09eeb9696124c36442cb7d8461c4dd3085dbd2c",
+            .hash = "sokol-0.1.0-pb1HKxxgNgA21GQvaybGRJ7Pgv1EtNmB0GrFsy5R7n-y",
         },
     },
 }
