@@ -314,7 +314,7 @@ const State = struct {
 
     game: struct {
         pacman: Pacman = .{},
-        ghosts: [NumGhosts]Ghost = .{.{}} ** NumGhosts,
+        ghosts: [NumGhosts]Ghost = @splat(.{}),
 
         xorshift: u32 = 0x12345678, // xorshift random-number-generator state
         score: u32 = 0,
@@ -344,8 +344,8 @@ const State = struct {
     } = .{},
 
     audio: struct {
-        voices: [NumVoices]Voice = .{.{}} ** NumVoices,
-        sounds: [NumSounds]Sound = .{.{}} ** NumSounds,
+        voices: [NumVoices]Voice = @splat(.{}),
+        sounds: [NumSounds]Sound = @splat(.{}),
         voice_tick_accum: i32 = 0,
         voice_tick_period: i32 = 0,
         sample_duration_ns: i32 = 0,
@@ -361,8 +361,8 @@ const State = struct {
         fade: u8 = 0xFF,
 
         // 'hardware sprites' (meh, array default initialization sure looks awkward...)
-        sprites: [NumSprites]Sprite = .{.{}} ** NumSprites,
-        debug_markers: [NumDebugMarkers]DebugMarker = .{.{}} ** NumDebugMarkers,
+        sprites: [NumSprites]Sprite = @splat(.{}),
+        debug_markers: [NumDebugMarkers]DebugMarker = @splat(.{}),
 
         // number of valid vertices in data.vertices
         num_vertices: u32 = 0,
