@@ -11,8 +11,8 @@
     .fingerprint = 0xa1c2e4b869826271,
     .dependencies = .{
         .sokol = .{
-            .url = "git+https://github.com/floooh/sokol-zig.git#200a477a1f7caf78a2bdf834607581c1046f9377",
-            .hash = "sokol-0.1.0-pb1HK6KkLACWnbfmJfdE-3vLDb1rH1Lo1BrNSzMwQz-w",
+            .url = "git+https://github.com/floooh/sokol-zig.git#ee31971e1e3001cbe3e80bc7ac73e38046ee6722",
+            .hash = "sokol-0.1.0-pb1HK6KkLADZ67wG6foFxCnd4-K56gDyhwKA1XgSR2CM",
         },
     },
 }
