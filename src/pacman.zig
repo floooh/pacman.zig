@@ -2326,7 +2326,10 @@ fn gfxCreateResources() void {
     };
 
     // create a dynamic vertex buffer for the tile and sprite quads
-    state.gfx.offscreen.vbuf = sg.makeBuffer(.{ .usage = .STREAM, .size = @sizeOf(@TypeOf(data.vertices)) });
+    state.gfx.offscreen.vbuf = sg.makeBuffer(.{
+        .usage = .{ .stream_update = true },
+        .size = @sizeOf(@TypeOf(data.vertices)),
+    });
 
     // create a quad-vertex-buffer for rendering the offscreen render target to the display
     const quad_verts = [_]f32{ 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 1.0 };
@@ -2362,7 +2365,7 @@ fn gfxCreateResources() void {
 
     // create a render-target image with a fixed upscale ratio
     state.gfx.offscreen.render_target = sg.makeImage(.{
-        .render_target = true,
+        .usage = .{ .render_attachment = true },
         .width = DisplayPixelsX * 2,
         .height = DisplayPixelsY * 2,
         .pixel_format = .RGBA8,
