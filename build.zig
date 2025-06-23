@@ -20,6 +20,7 @@ pub fn build(b: *Build) !void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "sokol", .module = dep_sokol.module("sokol") },
+            .{ .name = "shader", .module = try addShaderModule(b, dep_sokol) },
         },
     });
 
@@ -38,8 +39,6 @@ fn buildNative(b: *Build, opts: Options) !void {
         .name = "pacman",
         .root_module = opts.mod,
     });
-    const shd = try buildShader(b, opts.dep_sokol);
-    exe.step.dependOn(&shd.step);
     b.installArtifact(exe);
     const run = b.addRunArtifact(exe);
     b.step("run", "Run pacman").dependOn(&run.step);
@@ -51,8 +50,6 @@ fn buildWeb(b: *Build, opts: Options) !void {
         .name = "pacman",
         .root_module = opts.mod,
     });
-    const shd = try buildShader(b, opts.dep_sokol);
-    lib.step.dependOn(&shd.step);
 
     // create a build step which invokes the Emscripten linker
     const emsdk = opts.dep_sokol.builder.dependency("emsdk", .{});
@@ -75,11 +72,11 @@ fn buildWeb(b: *Build, opts: Options) !void {
 }
 
 // compile shader via sokol-shdc
-fn buildShader(b: *Build, dep_sokol: *Build.Dependency) !*Build.Step.Run {
-    return try sokol.shdc.compile(b, .{
-        .dep_shdc = dep_sokol.builder.dependency("shdc", .{}),
-        .input = b.path("src/shader.glsl"),
-        .output = b.path("src/shader.zig"),
+fn addShaderModule(b: *Build, dep_sokol: *Build.Dependency) !*Build.Module {
+    return sokol.shdc.createModule(b, "shader", dep_sokol.module("sokol"), .{
+        .shdc_dep = dep_sokol.builder.dependency("shdc", .{}),
+        .input = "src/shader.glsl",
+        .output = "shader.zig",
         .slang = .{
             .glsl410 = true,
             .glsl300es = true,
