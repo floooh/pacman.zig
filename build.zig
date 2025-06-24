@@ -20,7 +20,7 @@ pub fn build(b: *Build) !void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "sokol", .module = dep_sokol.module("sokol") },
-            .{ .name = "shader", .module = try addShaderModule(b, dep_sokol) },
+            .{ .name = "shader", .module = try createShaderModule(b, dep_sokol) },
         },
     });
 
@@ -72,9 +72,11 @@ fn buildWeb(b: *Build, opts: Options) !void {
 }
 
 // compile shader via sokol-shdc
-fn addShaderModule(b: *Build, dep_sokol: *Build.Dependency) !*Build.Module {
-    return sokol.shdc.createModule(b, "shader", dep_sokol.module("sokol"), .{
-        .shdc_dep = dep_sokol.builder.dependency("shdc", .{}),
+fn createShaderModule(b: *Build, dep_sokol: *Build.Dependency) !*Build.Module {
+    const mod_sokol = dep_sokol.module("sokol");
+    const dep_shdc = dep_sokol.builder.dependency("shdc", .{});
+    return sokol.shdc.createModule(b, "shader", mod_sokol, .{
+        .shdc_dep = dep_shdc,
         .input = "src/shader.glsl",
         .output = "shader.zig",
         .slang = .{
