@@ -11,7 +11,7 @@ const sapp = sokol.app;
 const sglue = sokol.glue;
 const saudio = sokol.audio;
 const slog = sokol.log;
-const shd = @import("shader.zig");
+const shd = @import("shader");
 
 // debugging and config options
 const AudioVolume = 0.5;
