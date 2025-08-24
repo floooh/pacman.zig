@@ -368,20 +368,29 @@ const State = struct {
         num_vertices: u32 = 0,
 
         // sokol-gfx objects
-        pass_action: sg.PassAction = .{},
+        tilerom: struct {
+            img: sg.Image = .{},
+            tex_view: sg.View = .{},
+        } = .{},
+        palette: struct {
+            img: sg.Image = .{},
+            tex_view: sg.View = .{},
+        } = .{},
+        render: struct {
+            img: sg.Image = .{},
+            tex_view: sg.View = .{},
+        } = .{},
+        linear_smp: sg.Sampler = .{},
+        nearest_smp: sg.Sampler = .{},
         offscreen: struct {
+            pass: sg.Pass = .{},
             vbuf: sg.Buffer = .{},
-            tile_img: sg.Image = .{},
-            palette_img: sg.Image = .{},
-            render_target: sg.Image = .{},
-            sampler: sg.Sampler = .{},
             pip: sg.Pipeline = .{},
-            attachments: sg.Attachments = .{},
             bind: sg.Bindings = .{},
         } = .{},
         display: struct {
+            pass_action: sg.PassAction = .{},
             quad_vbuf: sg.Buffer = .{},
-            sampler: sg.Sampler = .{},
             pip: sg.Pipeline = .{},
             bind: sg.Bindings = .{},
         } = .{},
@@ -1857,10 +1866,10 @@ fn introTick() void {
 fn gfxInit() void {
     sg.setup(.{
         .buffer_pool_size = 2,
-        .image_pool_size = 3,
+        .image_pool_size = 4,
         .shader_pool_size = 2,
         .pipeline_pool_size = 2,
-        .attachments_pool_size = 1,
+        .view_pool_size = 8,
         .environment = sglue.environment(),
         .logger = .{ .func = slog.func },
     });
@@ -2059,14 +2068,14 @@ fn gfxFrame() void {
     sg.updateBuffer(state.gfx.offscreen.vbuf, .{ .ptr = &data.vertices, .size = state.gfx.num_vertices * @sizeOf(Vertex) });
 
     // render tiles and sprites into offscreen render target
-    sg.beginPass(.{ .action = state.gfx.pass_action, .attachments = state.gfx.offscreen.attachments });
+    sg.beginPass(state.gfx.offscreen.pass);
     sg.applyPipeline(state.gfx.offscreen.pip);
     sg.applyBindings(state.gfx.offscreen.bind);
     sg.draw(0, state.gfx.num_vertices, 1);
     sg.endPass();
 
     // upscale-render the offscreen render target into the display framebuffer
-    sg.beginPass(.{ .action = state.gfx.pass_action, .swapchain = sglue.swapchain() });
+    sg.beginPass(.{ .action = state.gfx.display.pass_action, .swapchain = sglue.swapchain() });
     gfxAdjustViewport(sapp.widthf(), sapp.heightf());
     sg.applyPipeline(state.gfx.display.pip);
     sg.applyBindings(state.gfx.display.bind);
@@ -2320,10 +2329,11 @@ fn gfxDecodeColorPalette() void {
 
 fn gfxCreateResources() void {
     // pass action for clearing background to black
-    state.gfx.pass_action.colors[0] = .{
+    state.gfx.offscreen.pass.action.colors[0] = .{
         .load_action = .CLEAR,
         .clear_value = .{ .r = 0, .g = 0, .b = 0, .a = 1 },
     };
+    state.gfx.display.pass_action = state.gfx.offscreen.pass.action;
 
     // create a dynamic vertex buffer for the tile and sprite quads
     state.gfx.offscreen.vbuf = sg.makeBuffer(.{
@@ -2363,67 +2373,74 @@ fn gfxCreateResources() void {
         state.gfx.display.pip = sg.makePipeline(pip_desc);
     }
 
-    // create a render-target image with a fixed upscale ratio
-    state.gfx.offscreen.render_target = sg.makeImage(.{
-        .usage = .{ .render_attachment = true },
+    // create image, texture- and color-attachment-view for the rendered result
+    state.gfx.render.img = sg.makeImage(.{
+        .usage = .{ .color_attachment = true },
         .width = DisplayPixelsX * 2,
         .height = DisplayPixelsY * 2,
         .pixel_format = .RGBA8,
     });
+    state.gfx.render.tex_view = sg.makeView(.{
+        .texture = .{ .image = state.gfx.render.img },
+    });
+    state.gfx.offscreen.pass.attachments.colors[0] = sg.makeView(.{
+        .color_attachment = .{ .image = state.gfx.render.img },
+    });
 
-    // a pass object for rendering into the offscreen render target
-    {
-        var atts_desc: sg.AttachmentsDesc = .{};
-        atts_desc.colors[0].image = state.gfx.offscreen.render_target;
-        state.gfx.offscreen.attachments = sg.makeAttachments(atts_desc);
-    }
+    // create image and texture-view for the tile rom
+    state.gfx.tilerom.img = sg.makeImage(.{
+        .width = TileTextureWidth,
+        .height = TileTextureHeight,
+        .pixel_format = .R8,
+        .data = data: {
+            var d: sg.ImageData = .{};
+            d.subimage[0][0] = sg.asRange(&data.tile_pixels);
+            break :data d;
+        },
+    });
+    state.gfx.tilerom.tex_view = sg.makeView(.{
+        .texture = .{ .image = state.gfx.tilerom.img },
+    });
 
-    // create the decoded tile+sprite texture
-    {
-        var img_desc: sg.ImageDesc = .{
-            .width = TileTextureWidth,
-            .height = TileTextureHeight,
-            .pixel_format = .R8,
-        };
-        img_desc.data.subimage[0][0] = sg.asRange(&data.tile_pixels);
-        state.gfx.offscreen.tile_img = sg.makeImage(img_desc);
-    }
-
-    // create the color-palette texture
-    {
-        var img_desc: sg.ImageDesc = .{
-            .width = 256,
-            .height = 1,
-            .pixel_format = .RGBA8,
-        };
-        img_desc.data.subimage[0][0] = sg.asRange(&data.color_palette);
-        state.gfx.offscreen.palette_img = sg.makeImage(img_desc);
-    }
-
-    // a nearest-filter sampler object for the offscreen render pass
-    state.gfx.offscreen.sampler = sg.makeSampler(.{
-        .min_filter = .NEAREST,
-        .mag_filter = .NEAREST,
-        .wrap_u = .CLAMP_TO_EDGE,
-        .wrap_v = .CLAMP_TO_EDGE,
+    // create color-palette image and texture view
+    state.gfx.palette.img = sg.makeImage(.{
+        .width = 256,
+        .height = 1,
+        .pixel_format = .RGBA8,
+        .data = data: {
+            var d: sg.ImageData = .{};
+            d.subimage[0][0] = sg.asRange(&data.color_palette);
+            break :data d;
+        },
+    });
+    state.gfx.palette.tex_view = sg.makeView(.{
+        .texture = .{ .image = state.gfx.palette.img },
     });
 
     // a linear-filtering sampler for the default render pass
-    state.gfx.display.sampler = sg.makeSampler(.{
+    state.gfx.linear_smp = sg.makeSampler(.{
         .min_filter = .LINEAR,
         .mag_filter = .LINEAR,
         .wrap_u = .CLAMP_TO_EDGE,
         .wrap_v = .CLAMP_TO_EDGE,
     });
 
+    // a nearest-filter sampler object for the offscreen render pass
+    state.gfx.nearest_smp = sg.makeSampler(.{
+        .min_filter = .NEAREST,
+        .mag_filter = .NEAREST,
+        .wrap_u = .CLAMP_TO_EDGE,
+        .wrap_v = .CLAMP_TO_EDGE,
+    });
+
     // setup resource binding structs
     state.gfx.offscreen.bind.vertex_buffers[0] = state.gfx.offscreen.vbuf;
-    state.gfx.offscreen.bind.images[shd.IMG_tile_tex] = state.gfx.offscreen.tile_img;
-    state.gfx.offscreen.bind.images[shd.IMG_pal_tex] = state.gfx.offscreen.palette_img;
-    state.gfx.offscreen.bind.samplers[shd.SMP_smp] = state.gfx.offscreen.sampler;
+    state.gfx.offscreen.bind.views[shd.VIEW_tile_tex] = state.gfx.tilerom.tex_view;
+    state.gfx.offscreen.bind.views[shd.VIEW_pal_tex] = state.gfx.palette.tex_view;
+    state.gfx.offscreen.bind.samplers[shd.SMP_smp] = state.gfx.nearest_smp;
     state.gfx.display.bind.vertex_buffers[0] = state.gfx.display.quad_vbuf;
-    state.gfx.display.bind.images[shd.IMG_tex] = state.gfx.offscreen.render_target;
-    state.gfx.display.bind.samplers[shd.SMP_smp] = state.gfx.display.sampler;
+    state.gfx.display.bind.views[shd.VIEW_tex] = state.gfx.render.tex_view;
+    state.gfx.display.bind.samplers[shd.SMP_smp] = state.gfx.linear_smp;
 }
 
 //--- audio system -------------------------------------------------------------
