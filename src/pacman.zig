@@ -2394,7 +2394,7 @@ fn gfxCreateResources() void {
         .pixel_format = .R8,
         .data = data: {
             var d: sg.ImageData = .{};
-            d.subimage[0][0] = sg.asRange(&data.tile_pixels);
+            d.mip_levels[0] = sg.asRange(&data.tile_pixels);
             break :data d;
         },
     });
@@ -2409,7 +2409,7 @@ fn gfxCreateResources() void {
         .pixel_format = .RGBA8,
         .data = data: {
             var d: sg.ImageData = .{};
-            d.subimage[0][0] = sg.asRange(&data.color_palette);
+            d.mip_levels[0] = sg.asRange(&data.color_palette);
             break :data d;
         },
     });
