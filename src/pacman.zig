@@ -635,7 +635,7 @@ fn actorToSpritePos(actorPos: ivec2) ivec2 {
 
 // get pointer to ghost by type
 fn ghostPtr(t: GhostType) *Ghost {
-    return &state.game.ghosts[@intFromEnum(t)];
+    return &state.game.ghosts[@backingInt(t)];
 }
 
 // shortcut: get pointers to ghosts by name
@@ -771,7 +771,7 @@ fn spritePacman() *Sprite {
     return &state.gfx.sprites[0];
 }
 fn spriteGhost(ghost_type: GhostType) *Sprite {
-    return &state.gfx.sprites[@intFromEnum(ghost_type) + 1];
+    return &state.gfx.sprites[@backingInt(ghost_type) + 1];
 }
 fn spriteBlinky() *Sprite {
     return &state.gfx.sprites[1];
@@ -798,7 +798,7 @@ fn spriteImagePacman(dir: Dir, tick: u32) void {
     const phase = (tick / 2) & 3;
     var spr = spritePacman();
     spr.enabled = true;
-    spr.tile = tiles[@intFromEnum(dir) & 1][phase];
+    spr.tile = tiles[@backingInt(dir) & 1][phase];
     spr.color = ColorCodePacman;
     spr.flipx = (dir == .Left);
     spr.flipy = (dir == .Up);
@@ -824,8 +824,8 @@ fn spriteImageGhost(ghost_type: GhostType, dir: Dir, tick: u32) void {
     };
     const phase = (tick / 8) & 1;
     var spr = spriteGhost(ghost_type);
-    spr.tile = tiles[@intFromEnum(dir)][phase];
-    spr.color = ColorCodeBlinky + @intFromEnum(ghost_type) * 2;
+    spr.tile = tiles[@backingInt(dir)][phase];
+    spr.color = ColorCodeBlinky + @backingInt(ghost_type) * 2;
 }
 
 // set sprite image to frightened ghost
@@ -848,7 +848,7 @@ fn spriteImageGhostFrightened(ghost_type: GhostType, tick: u32, blinking_tick: u
 fn spriteImageGhostEyes(ghost_type: GhostType, dir: Dir) void {
     const tiles = [4]u8{ 32, 34, 36, 38 };
     var spr = spriteGhost(ghost_type);
-    spr.tile = tiles[@intFromEnum(dir)];
+    spr.tile = tiles[@backingInt(dir)];
     spr.color = ColorCodeEyes;
 }
 
@@ -2065,7 +2065,11 @@ fn gfxFrame() void {
     if (state.gfx.fade > 0) {
         gfxAddFadeVertices();
     }
-    sg.updateBuffer(state.gfx.offscreen.vbuf, .{ .ptr = &data.vertices, .size = state.gfx.num_vertices * @sizeOf(Vertex) });
+    sg.writeBufferTransient(.{
+        .dst = .{ .buffer = state.gfx.offscreen.vbuf },
+        .src = .{ .data = sg.asRange(&data.vertices) },
+        .size = state.gfx.num_vertices * @sizeOf(Vertex),
+    });
 
     // render tiles and sprites into offscreen render target
     sg.beginPass(state.gfx.offscreen.pass);
@@ -2337,7 +2341,7 @@ fn gfxCreateResources() void {
 
     // create a dynamic vertex buffer for the tile and sprite quads
     state.gfx.offscreen.vbuf = sg.makeBuffer(.{
-        .usage = .{ .stream_update = true },
+        .usage = .{ .write_transient = true },
         .size = @sizeOf(@TypeOf(data.vertices)),
     });
 
