@@ -2396,11 +2396,7 @@ fn gfxCreateResources() void {
         .width = TileTextureWidth,
         .height = TileTextureHeight,
         .pixel_format = .R8,
-        .data = data: {
-            var d: sg.ImageData = .{};
-            d.mip_levels[0] = sg.asRange(&data.tile_pixels);
-            break :data d;
-        },
+        .data = sg.asRange(&data.tile_pixels),
     });
     state.gfx.tilerom.tex_view = sg.makeView(.{
         .texture = .{ .image = state.gfx.tilerom.img },
@@ -2411,11 +2407,7 @@ fn gfxCreateResources() void {
         .width = 256,
         .height = 1,
         .pixel_format = .RGBA8,
-        .data = data: {
-            var d: sg.ImageData = .{};
-            d.mip_levels[0] = sg.asRange(&data.color_palette);
-            break :data d;
-        },
+        .data = sg.asRange(&data.color_palette),
     });
     state.gfx.palette.tex_view = sg.makeView(.{
         .texture = .{ .image = state.gfx.palette.img },
