@@ -2793,6 +2793,7 @@ pub fn main() void {
         .width = 2 * DisplayPixelsX,
         .height = 2 * DisplayPixelsY,
         .window_title = "pacman.zig",
+        .icon = .{ .sokol_default = true },
         .logger = .{ .func = slog.func },
     });
 }
