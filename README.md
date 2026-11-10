@@ -23,10 +23,10 @@ cd pacman.zig
 zig build run
 ```
 
-...or for the web version run (NOTE: this will install a local Emscripten SDK into the Zig cache, so the first
-run will take a little while):
+...or for the web version (NOTE: this requires a one-time step to install the Emscripten SDK into `zig-pkg/`):
 
 ```bash
+zig build install-emsdk
 zig build -Dtarget=wasm32-emscripten run
 ```
 

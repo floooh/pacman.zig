@@ -35,6 +35,10 @@ pub fn build(b: *Build) !void {
     } else {
         try buildNative(b, opts);
     }
+
+    // add an emsdk install step
+    const emsdk_install_step = sokol.emSdkInstallStep(b, dep_sokol.builder.dependency("emsdk", .{}), .{});
+    b.step("install-emsdk", "Install Emscripten SDK in zig-pkg").dependOn(emsdk_install_step);
 }
 
 // this is the regular build for all native platforms, nothing surprising here
